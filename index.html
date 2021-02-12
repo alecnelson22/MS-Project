@@ -13,17 +13,16 @@
   <meta property="og:site_name" content="Interactive error viz for reservoir simulation data">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:image:alt" content="image description">
-  <!-- <link href="style.css" rel="stylesheet"> -->
-  <!-- <link rel="icon" type="image/svg+xml" href="/favicon.svg"> -->
+
+  <link rel="stylesheet" href="src/GeometryViewer.module.css">
+
 </head>
 <body>
-  <h1>Your content here!</h1>
-  <script type="module" src="GeometryViewer.js"></script>
-  <script type="text/javascript">
-    function helloWorld() {
-        print("hello world");
-    }
-  </script>
-  <p><a href="#" onClick="helloWorld();">Top Text</a></p>
+
+  <script src='https://unpkg.com/vtk.js@16.1.9/dist/vtk.js'></script>
+  <script src="https://d3js.org/d3.v6.min.js"></script>
+  <script src='src/GeometryViewer.js'></script>
+  <script src='src/app.js'></script>
+
 </body>
 </html>

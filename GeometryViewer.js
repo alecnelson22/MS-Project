@@ -1,27 +1,39 @@
-/* eslint-disable import/prefer-default-export */
-/* eslint-disable import/no-extraneous-dependencies */
+// eslint-disable import/prefer-default-export 
+// eslint-disable import/no-extraneous-dependencies 
 
-import 'vtk.js/Sources/favicon';
+// import 'vtk.js/Sources/favicon';
 
-import macro from 'vtk.js/Sources/macro';
-import HttpDataAccessHelper from 'vtk.js/Sources/IO/Core/DataAccessHelper/HttpDataAccessHelper';
-import vtkActor from 'vtk.js/Sources/Rendering/Core/Actor';
-import vtkDataArray from 'vtk.js/Sources/Common/Core/DataArray';
-import vtkColorMaps from 'vtk.js/Sources/Rendering/Core/ColorTransferFunction/ColorMaps';
-import vtkColorTransferFunction from 'vtk.js/Sources/Rendering/Core/ColorTransferFunction';
-import vtkFullScreenRenderWindow from 'vtk.js/Sources/Rendering/Misc/FullScreenRenderWindow';
-import vtkMapper from 'vtk.js/Sources/Rendering/Core/Mapper';
-import vtkURLExtract from 'vtk.js/Sources/Common/Core/URLExtract';
-import vtkXMLPolyDataReader from 'vtk.js/Sources/IO/XML/XMLPolyDataReader';
-import vtkFPSMonitor from 'vtk.js/Sources/Interaction/UI/FPSMonitor';
+// import macro from 'vtk.js/Sources/macro';
+// import HttpDataAccessHelper from 'vtk.js/Sources/IO/Core/DataAccessHelper/HttpDataAccessHelper';
+// import vtkActor from 'vtk.js/Sources/Rendering/Core/Actor';
+// import vtkDataArray from 'vtk.js/Sources/Common/Core/DataArray';
+// import vtkColorMaps from 'vtk.js/Sources/Rendering/Core/ColorTransferFunction/ColorMaps';
+// import vtkColorTransferFunction from 'vtk.js/Sources/Rendering/Core/ColorTransferFunction';
+// import vtkFullScreenRenderWindow from 'vtk.js/Sources/Rendering/Misc/FullScreenRenderWindow';
+// import vtkMapper from 'vtk.js/Sources/Rendering/Core/Mapper';
+// import vtkURLExtract from 'vtk.js/Sources/Common/Core/URLExtract';
+// import vtkXMLPolyDataReader from 'vtk.js/Sources/IO/XML/XMLPolyDataReader';
+// import vtkFPSMonitor from 'vtk.js/Sources/Interaction/UI/FPSMonitor';
 
-import {
-  ColorMode,
-  ScalarMode,
-} from 'vtk.js/Sources/Rendering/Core/Mapper/Constants';
+// import {
+//   ColorMode,
+//   ScalarMode,
+// } from 'vtk.js/Sources/Rendering/Core/Mapper/Constants';
 
-import style from './GeometryViewer.module.css';
-import icon from '../../../Documentation/content/icon/favicon-96x96.png';
+var macro = vtk.macro;
+var HttpDataAccessHelper = vtk.IO.Core.DataAccessHelper.HttpDataAccessHelper;
+var vtkActor = vtk.Rendering.Core.vtkActor;
+var vtkDataArray = vtk.Common.Core.vtkDataArray;
+var vtkColorMaps = vtk.Rendering.Core.vtkColorTransferFunction.vtkColorMaps;
+var vtkColorTransferFunction = vtk.Rendering.Core.vtkColorTransferFunction;
+var vtkFullScreenRenderWindow = vtk.Rendering.Misc.vtkFullScreenRenderWindow;
+var vtkMapper = vtk.Rendering.Core.vtkMapper;
+var vtkURLExtract = vtk.Common.Core.vtkURLExtract;
+var vtkXMLPolyDataReader = vtk.IO.XML.vtkXMLPolyDataReader;
+var vtkFPSMonitor = vtk.Interaction.UI.vtkFPSMonitor;
+
+// import style from './GeometryViewer.module.css';
+// import icon from '../../../Documentation/content/icon/favicon-96x96.png';
 
 let autoInit = true;
 let background = [0, 0, 0];
