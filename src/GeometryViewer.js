@@ -9,6 +9,9 @@ let vtkMapper = vtk.Rendering.Core.vtkMapper;
 let vtkURLExtract = vtk.Common.Core.vtkURLExtract;
 let vtkXMLPolyDataReader = vtk.IO.XML.vtkXMLPolyDataReader;
 let vtkFPSMonitor = vtk.Interaction.UI.vtkFPSMonitor;
+let vtkDataSet = vtk.Common.DataModel.vtkDataSet;
+
+let dd = 1;
 
 // Cell Picker
 let vtkCellPicker = vtk.Rendering.Core.vtkCellPicker;
@@ -17,12 +20,19 @@ let vtkSphereSource = vtk.Filters.Sources
 let ColorMode = vtk.Rendering.Core.vtkMapper.ColorMode;
 let ScalarMode = vtk.Rendering.Core.vtkMapper.ScalarMode;
 
+let lookupTable = vtkColorTransferFunction.newInstance();
+let vtpReader = vtkXMLPolyDataReader.newInstance();
+let actor = vtkActor.newInstance();
+let source;
+
 let autoInit = true;
 let background = [0, 0, 0];
 let renderWindow;
 let renderer;
 let mapper;
 let presetSelector;
+
+let resData;
 
 let files;
 
@@ -109,7 +119,8 @@ function createViewer(container) {
   const fullScreenRenderer = vtkFullScreenRenderWindow.newInstance({
     background,
     rootContainer: container,
-    containerStyle: { height: '100%', width: '100%', position: 'absolute', padding: '2em' },
+    // containerStyle: { height: '100%', width: '50%', position: 'absolute', padding: '2em' },
+    containerStyle: { height: '99%', width: '50%', position: 'absolute'},
   });
   renderer = fullScreenRenderer.getRenderer();
   renderWindow = fullScreenRenderer.getRenderWindow();
@@ -146,7 +157,7 @@ function setSelectors() {
     .join('');
 
   const representationSelector = document.createElement('select');
-  representationSelector.setAttribute('class', selectorClass);
+  // representationSelector.setAttribute('class', selectorClass);
   representationSelector.setAttribute('id', 'representationSelector');
   representationSelector.innerHTML = [
     'Hidden',
@@ -165,11 +176,11 @@ function setSelectors() {
   representationSelector.value = '1:2:0';
 
   const colorBySelector = document.createElement('select');
-  colorBySelector.setAttribute('class', selectorClass);
+  // colorBySelector.setAttribute('class', selectorClass);
   colorBySelector.setAttribute('id', 'colorBySelector');
 
   const componentSelector = document.createElement('select');
-  componentSelector.setAttribute('class', selectorClass);
+  // componentSelector.setAttribute('class', selectorClass);
   componentSelector.setAttribute('id', 'componentSelector');
   componentSelector.style.display = 'none';
 
@@ -190,7 +201,7 @@ function setSelectors() {
   timeSelector.setAttribute('value', '0');
 
   const labelSelector = document.createElement('label');
-  labelSelector.setAttribute('class', selectorClass);
+  labelSelector.style.color = 'white';
   labelSelector.setAttribute('id', 'labelSelector');
 
   const controlContainer = document.createElement('div');
@@ -207,34 +218,6 @@ function setSelectors() {
 
 }
 
-// ----------------------------------------------------------------------------
-function createTimePipeline(fileName, fileContents, currProp) {
-  renderer.removeAllActors();
-  document.getElementById('labelSelector').innerHTML = fileName.name;
-
-  const vtpReader = vtkXMLPolyDataReader.newInstance();
-  vtpReader.parseAsArrayBuffer(fileContents);
-
-  const lookupTable = vtkColorTransferFunction.newInstance();
-  const source = vtpReader.getOutputData(0);
-  const actor = vtkActor.newInstance();
-  const data = source.getCellData().getArrayByName(currProp);
-  const dataRange = [].concat(data ? data.getRange() : [0, 1]);
-  
-  const preset = vtkColorMaps.getPresetByName(presetSelector.value);
-  lookupTable.applyColorMap(preset);
-  lookupTable.setMappingRange(dataRange[0], dataRange[1]);
-  lookupTable.updateRange();
-
-  actor.setScale(1,1,5);
-
-  mapper.setLookupTable(lookupTable);
-  actor.setMapper(mapper);
-  mapper.setInputData(source);
-  renderer.addActor(actor);
-  renderWindow.render();
-}
-
 
 function createPipeline(fileName, fileContents) {
   // // Create UI
@@ -242,24 +225,18 @@ function createPipeline(fileName, fileContents) {
   document.getElementById('labelSelector').innerHTML = fileName;
 
   // VTK pipeline
-  const vtpReader = vtkXMLPolyDataReader.newInstance();
+  // const vtpReader = vtkXMLPolyDataReader.newInstance();
   vtpReader.parseAsArrayBuffer(fileContents);
 
-  const lookupTable = vtkColorTransferFunction.newInstance();
-  const source = vtpReader.getOutputData(0);
-  // const mapper = vtkMapper.newInstance({
-  //   interpolateScalarsBeforeMapping: false,
-  //   useLookupTableScalarRange: true,
-  //   lookupTable,
-  //   scalarVisibility: false,
-  // });
+  // const lookupTable = vtkColorTransferFunction.newInstance();
+  source = vtpReader.getOutputData(0);
+
   mapper = vtkMapper.newInstance({
     interpolateScalarsBeforeMapping: false,
     useLookupTableScalarRange: true,
     lookupTable,
     scalarVisibility: false,
   });
-  const actor = vtkActor.newInstance();
   const scalars = source.getPointData().getScalars();
   const dataRange = [].concat(scalars ? scalars.getRange() : [0, 1]);
   let activeArray = vtkDataArray;
@@ -313,11 +290,29 @@ function createPipeline(fileName, fileContents) {
 
   function updateTime(event) {
     let colorBySelector = document.getElementById('colorBySelector'); 
-    let selectedText = colorBySelector.options[colorBySelector.selectedIndex].text;
-    loadTimeFile(files[event.target.value], selectedText);
-    // const time = Int(event.target.value) / 100;
-    // actor.getProperty().setOpacity(opacity);
-    // renderWindow.render();
+    let currProp = colorBySelector.options[colorBySelector.selectedIndex].text;
+    let t = event.target.value.toString();
+
+    // This assumes that the histo plots change with time 
+    // This is not true for PORO, PERM, so we need to check if the plot needs to be updated in the first place
+    // Hardcode check here at the moment
+    let currProp_lower = currProp.toLowerCase();
+    if (currProp_lower == 'pressure' || currProp_lower == 'sgas') {
+      let p = document.getElementById('pressure');
+      p.remove();
+      p = document.getElementById('sgas');
+      p.remove();
+
+      let c = d3.select('#data-viewer');
+      let d = resData['reservoir_data']['unstructured']['pressure'][t]
+      makeHisto(c, d, 400, 'pressure');
+      d = resData['reservoir_data']['unstructured']['sgas'][t]
+      makeHisto(c, d, 600, 'sgas');
+    }
+        
+    loadTimeFile(event.target.value);
+    renderWindow.render();
+
   }
 
   timeSelector.addEventListener('input', updateTime);
@@ -351,6 +346,8 @@ function createPipeline(fileName, fileContents) {
     )
     .join('');
 
+  // Chooses which property is displayed on the grid
+  // This currently is a performance bottleneck
   function updateColorBy(event) {
     const [location, colorByArrayName] = event.target.value.split(':');
     const interpolateScalarsBeforeMapping = location === 'PointData';
@@ -401,6 +398,7 @@ function createPipeline(fileName, fileContents) {
     });
     applyPreset();
   }
+
   colorBySelector.addEventListener('change', updateColorBy);
   updateColorBy({ target: colorBySelector });
 
@@ -438,53 +436,53 @@ function createPipeline(fileName, fileContents) {
 
 
 
-  // Cell Picker
-  const picker = vtkCellPicker.newInstance();
-  picker.setPickFromList(1);
-  picker.setTolerance(0);
-  picker.initializePickList();
-  picker.addPickList(actor);
+//   // Cell Picker
+//   const picker = vtkCellPicker.newInstance();
+//   picker.setPickFromList(1);
+//   picker.setTolerance(0);
+//   picker.initializePickList();
+//   picker.addPickList(actor);
 
-// Pick on mouse right click
-renderWindow.getInteractor().onRightButtonPress((callData) => {
-  if (renderer !== callData.pokedRenderer) {
-    return;
-  }
+// // Pick on mouse right click
+// renderWindow.getInteractor().onRightButtonPress((callData) => {
+//   if (renderer !== callData.pokedRenderer) {
+//     return;
+//   }
 
-  const pos = callData.position;
-  const point = [pos.x, pos.y, 0.0];
-  console.log(`Pick at: ${point}`);
-  picker.pick(point, renderer);
+//   const pos = callData.position;
+//   const point = [pos.x, pos.y, 0.0];
+//   console.log(`Pick at: ${point}`);
+//   picker.pick(point, renderer);
 
-  if (picker.getActors().length === 0) {
-    const pickedPoint = picker.getPickPosition();
-    console.log(`No cells picked, default: ${pickedPoint}`);
-  } 
+//   if (picker.getActors().length === 0) {
+//     const pickedPoint = picker.getPickPosition();
+//     console.log(`No cells picked, default: ${pickedPoint}`);
+//   } 
   
-  else {
-    const pickedCellId = picker.getCellId();
-    console.log('Picked cell: ', pickedCellId);
+//   else {
+//     const pickedCellId = picker.getCellId();
+//     console.log('Picked cell: ', pickedCellId);
 
-    const pickedPoints = picker.getPickedPositions();
-    for (let i = 0; i < pickedPoints.length; i++) {
-      const pickedPoint = pickedPoints[i];
-      console.log(`Picked: ${pickedPoint}`);
-    }
-  }
-});
+//     const pickedPoints = picker.getPickedPositions();
+//     for (let i = 0; i < pickedPoints.length; i++) {
+//       const pickedPoint = pickedPoints[i];
+//       console.log(`Picked: ${pickedPoint}`);
+//     }
+//   }
+// });
 
   // First render
   renderer.resetCamera();
   renderWindow.render();
 
-  global.pipeline[fileName] = {
-    actor,
-    mapper,
-    source,
-    lookupTable,
-    renderer,
-    renderWindow,
-  };
+  // global.pipeline[fileName] = {
+  //   actor,
+  //   mapper,
+  //   source,
+  //   lookupTable,
+  //   renderer,
+  //   renderWindow,
+  // };
 
   // Update stats
   fpsMonitor.update();
@@ -497,76 +495,201 @@ function loadFile(file, nfiles) {
   reader.onload = function onLoad(e) {
     createPipeline(file.name, reader.result);
     let ts = document.getElementById('timeSelector');
-    ts.setAttribute('max', nfiles);
+
+    //TODO: currently hardcoded
+    ts.setAttribute('max', 63);
     ts.setAttribute('min', '0');
   };
   reader.readAsArrayBuffer(file);
 }
 
-function loadTimeFile(file, currProp) {
-  console.log(file);
-  const reader = new FileReader();
-  reader.onload = function onLoad(e) {
-    createTimePipeline(file, reader.result, currProp);
-  };
-  reader.readAsArrayBuffer(file);
+// function loadTimeFile(file, currProp) {
+function loadTimeFile(time) {
+  let timeFiles = ["PRESSURE", "SGAS"]
+  let currProp = colorBySelector.options[colorBySelector.selectedIndex].text;
+
+  let cd = source.getCellData();
+  let test = source.getCells();
+  let arrays = cd.getArrays();
+  for (prop of arrays) {
+    let name = prop.getName();
+
+    if (timeFiles.includes(name)) {
+      let data = source.getCellData().getArrayByName(name);
+      data.setData(resData['reservoir_data']['structured'][name.toLowerCase()][time]);
+    }
+  }
+
+  let dMax = resData['reservoir_data']['unstructured']['dataRanges'][currProp]['max']
+  let dMin = resData['reservoir_data']['unstructured']['dataRanges'][currProp]['min']
+
+  const dataRange = [dMin, dMax]
+  const preset = vtkColorMaps.getPresetByName(presetSelector.value);
+  lookupTable.applyColorMap(preset);
+  lookupTable.setMappingRange(dataRange[0], dataRange[1]);
+  lookupTable.updateRange();
+
+  renderWindow.render();
 }
 
 // ----------------------------------------------------------------------------
 
 function load(container, options) {
-    autoInit = false;
-    emptyContainer(container);
-  
-    if (options.files) {
-      console.log(options.files);
-      createViewer(container);
-      let count = options.files.length;
-      loadFile(options.files[0], count);
+  autoInit = false;
+  emptyContainer(container);
 
-      updateCamera(renderer.getActiveCamera());
-    } else if (options.fileURL) {
-      const urls = [].concat(options.fileURL);
-      const progressContainer = document.createElement('div');
-      progressContainer.setAttribute('class', 'progress');
-      container.appendChild(progressContainer);
-  
-      const progressCallback = (progressEvent) => {
-        if (progressEvent.lengthComputable) {
-          const percent = Math.floor(
-            (100 * progressEvent.loaded) / progressEvent.total
-          );
-          progressContainer.innerHTML = `Loading ${percent}%`;
-        } else {
-          progressContainer.innerHTML = macro.formatBytesToProperUnit(
-            progressEvent.loaded
-          );
-        }
-      };
-  
-      createViewer(container);
-      const nbURLs = urls.length;
-      let nbLoadedData = 0;
-  
-      /* eslint-disable no-loop-func */
-      while (urls.length) {
-        const url = urls.pop();
-        const name = Array.isArray(userParams.name)
-          ? userParams.name[urls.length]
-          : `Data ${urls.length + 1}`;
-        HttpDataAccessHelper.fetchBinary(url, {
-          progressCallback,
-        }).then((binary) => {
-          nbLoadedData++;
-          if (nbLoadedData === nbURLs) {
-            container.removeChild(progressContainer);
-          }
-          createPipeline(name, binary);
-          updateCamera(renderer.getActiveCamera());
-        });
+  if (options.files) {
+    createViewer(container);
+    let count = options.files.length;
+    loadFile(options.files[0], count);
+
+    updateCamera(renderer.getActiveCamera());
+  } else if (options.fileURL) {
+    const urls = [].concat(options.fileURL);
+    const progressContainer = document.createElement('div');
+    progressContainer.setAttribute('class', 'progress');
+    container.appendChild(progressContainer);
+
+    const progressCallback = (progressEvent) => {
+      if (progressEvent.lengthComputable) {
+        const percent = Math.floor(
+          (100 * progressEvent.loaded) / progressEvent.total
+        );
+        progressContainer.innerHTML = `Loading ${percent}%`;
+      } else {
+        progressContainer.innerHTML = macro.formatBytesToProperUnit(
+          progressEvent.loaded
+        );
       }
+    };
+
+    createViewer(container);
+    const nbURLs = urls.length;
+    let nbLoadedData = 0;
+
+    while (urls.length) {
+      const url = urls.pop();
+      const name = Array.isArray(userParams.name)
+        ? userParams.name[urls.length]
+        : `Data ${urls.length + 1}`;
+      HttpDataAccessHelper.fetchBinary(url, {
+        progressCallback,
+      }).then((binary) => {
+        nbLoadedData++;
+        if (nbLoadedData === nbURLs) {
+          container.removeChild(progressContainer);
+        }
+        createPipeline(name, binary);
+        updateCamera(renderer.getActiveCamera());
+      });
     }
   }
+
+  // D3 Data Loading
+  loadData().then(function(data1) {
+    resData = data1;
+    var canvas = d3.select('body').append('svg')
+      .attr('id', 'data-viewer')
+      .style('width', '50%')
+      .style('height', '100%')
+      .style('float', 'right')
+      .style('background-color', 'gray')
+
+    makeHisto(canvas, data1['reservoir_data']['unstructured']['poro'], 0, 'poro');
+    makeHisto(canvas, data1['reservoir_data']['unstructured']['perm'], 200, 'perm');
+    makeHisto(canvas, data1['reservoir_data']['unstructured']['pressure'][0], 400, 'pressure');
+    makeHisto(canvas, data1['reservoir_data']['unstructured']['sgas'][0], 600, 'sgas');
+
+  });
+}
+
+
+// Creates a histogram
+function makeHisto(canvas, rData, xOffset, name) {
+
+  let x = d3.scaleLinear()
+  .domain([0, 1])
+  .range([xOffset + 30, xOffset + 200 - 30])
+  .clamp(false);
+
+  let colors = ["black"]
+    .concat(d3.schemeCategory10)
+    .concat(d3.schemePaired)
+    .concat(d3.schemePastel1)
+    .concat(d3.schemePastel2);
+
+  var bin = d3.bin();
+  var buckets = bin(rData);
+
+  const width = 300,
+    height = 200,
+    margin = { top: 20, right: 20, bottom: 30, left: 40 },
+    svg = canvas.append('g').attr('id', name),
+    maxBins = d3.max(buckets, d => d.length),
+    data = buckets.flat(),
+    count = data.length,
+    y = d3
+      .scaleLinear()
+      .domain([0, maxBins])
+      .nice()
+      .range([height - margin.bottom, margin.top]),
+    frequency = y,
+    xAxis = g =>
+      g
+        .attr("transform", `translate(0,${height - margin.bottom})`)
+        .call(d3.axisBottom(x).tickSizeOuter(0))
+        .call(g =>
+          g
+            .append("text")
+            .attr("x", xOffset + 120)
+            .attr("y", -150)
+            .attr("fill", "#000")
+            .attr("font-weight", "bold")
+            .attr("text-anchor", "end")
+            .text(name)
+        );
+
+  const binColor = d3
+  .scaleThreshold()
+  .domain(buckets.map(d => d.x0))
+  .range(colors);
+
+  svg.append("g")
+    // .attr('id', name)
+    .selectAll("rect")
+    .data(buckets)
+    .join("rect")
+    .attr("fill", (d => binColor(d.x0)))
+    // .attr("x", d => x(d.x0) + 1)
+    .attr("x", (d,i) => xOffset + (i * 8 + 30))
+    // .attr("width", d => Math.max(0, x(d.x1) - x(d.x0) - 1))
+    .attr("width", 8)
+    .attr("y", d => y(d.length))
+    .attr("height", d => y(0) - y(d.length));
+
+  svg.append("g").call(xAxis);
+
+  // const labels = svg
+  // .append("g")
+  // .selectAll("text")
+  // .data(buckets.filter(d => d.length > 0))
+  // .join("text")
+  // .attr("x", d => ((x(d.x0) + x(d.x1)) / 2) | 0)
+  // .attr("y", d => y(d.length) - 2)
+  // .style("fill", "black")
+  // .style("font-size", 10)
+  // .style("text-anchor", "middle");
+
+  // labels.text(d =>
+  // x(d.x1) - x(d.x0) < 50
+  //   ? d.length
+  //   : d.length > 1
+  //   ? `${d.length} items`
+  //   : d.length === 1
+  //   ? "1 item"
+  //   : "empty bucket"
+  // );
+}
 
 function initLocalFileLoader(container) {
     const exampleContainer = document.querySelector('.content');
@@ -605,41 +728,6 @@ function initLocalFileLoader(container) {
     fileContainer.addEventListener('dragover', preventDefaults);
   }
 
-// export function initLocalFileLoader(container) {
-//   const exampleContainer = document.querySelector('.content');
-//   const rootBody = document.querySelector('body');
-//   const myContainer = container || exampleContainer || rootBody;
-
-//   if (myContainer !== container) {
-//     myContainer.classList.add(style.fullScreen);
-//     rootBody.style.margin = '0';
-//     rootBody.style.padding = '0';
-//   } else {
-//     rootBody.style.margin = '0';
-//     rootBody.style.padding = '0';
-//   }
-
-//   const fileContainer = document.createElement('div');
-//   fileContainer.innerHTML = `<div class="${style.bigFileDrop}"/><input type="file" multiple accept=".vtp" style="display: none;"/>`;
-//   myContainer.appendChild(fileContainer);
-
-//   const fileInput = fileContainer.querySelector('input');
-
-//   function handleFile(e) {
-//     preventDefaults(e);
-//     const dataTransfer = e.dataTransfer;
-//     const files = e.target.files || dataTransfer.files;
-//     if (files.length > 0) {
-//       myContainer.removeChild(fileContainer);
-//       load(myContainer, { files });
-//     }
-//   }
-
-//   fileInput.addEventListener('change', handleFile);
-//   fileContainer.addEventListener('drop', handleFile);
-//   fileContainer.addEventListener('click', (e) => fileInput.click());
-//   fileContainer.addEventListener('dragover', preventDefaults);
-// }
 
 // Look at URL an see if we should load a file
 // ?fileURL=https://data.kitware.com/api/v1/item/59cdbb588d777f31ac63de08/download
