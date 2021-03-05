@@ -2491,6 +2491,26 @@ class CMG(FlowGrid):
                             continue
             return orderDict
 
+        def cylinders(self):
+            cyl = {'centers': [], 'heights': []}
+            for w in self.wells:
+                b = w['LOC']
+                t = [b[0], b[1], 1]
+                b_surf = self.cell_verts(b)
+                t_surf = self.cell_verts(t)
+                minZ = t_surf[0][2]
+                b_v = self.centroid(b_surf)
+                for i in range(len(b_surf)):
+                    t_v = t_surf[i]
+                    if t_v[2] < minZ:
+                        minZ = t_v[2]
+                cyl_height = abs(b_v[2] - minZ)
+                cyl_center = [b_v[0], b_v[1], minZ + cyl_height/2]
+                cyl['centers'].append(cyl_center)
+                cyl['heights'].append(cyl_height)
+            with open(os.path.join(self.out_dir, 'well_cylinders.json'), "w") as wc:
+                json.dump(cyl, wc)
+
         def build_cylinders(self, vtk_fname, zscale=1, radius=20):
             """
             Prepares Paraview script for automatically creating cylinders to represent wells
