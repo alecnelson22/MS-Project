@@ -26,6 +26,7 @@ let vtpReader = vtkXMLPolyDataReader.newInstance();
 let actor = vtkActor.newInstance();
 let actor_inside = vtkActor.newInstance();
 let source;
+let source_inside;
 
 let autoInit = true;
 let background = [0, 0, 0];
@@ -202,6 +203,24 @@ function setSelectors() {
   timeSelector.setAttribute('type', 'range');
   timeSelector.setAttribute('value', '0');
 
+  // Create threshold input
+  let lowT = document.createElement('input');
+  lowT.setAttribute('id', 'lowT');
+  lowT.setAttribute('type', 'text');
+  lowT.setAttribute('placeholder', 'Lower Threshold');
+
+  let highT = document.createElement('input')
+  highT.setAttribute('id', 'highT');
+  highT.setAttribute('type', 'text');
+  highT.setAttribute('placeholder', 'Upper Threshold');
+
+  let submit = document.createElement('input');
+  submit.setAttribute('type', 'button');
+  submit.setAttribute('onclick', 'onSubmit()');
+  submit.setAttribute('value', 'Apply');
+
+
+
   const labelSelector = document.createElement('label');
   labelSelector.style.color = 'white';
   labelSelector.setAttribute('id', 'labelSelector');
@@ -216,11 +235,23 @@ function setSelectors() {
   controlContainer.appendChild(componentSelector);
   controlContainer.appendChild(opacitySelector);
   controlContainer.appendChild(timeSelector);
+  controlContainer.appendChild(lowT);
+  controlContainer.appendChild(highT);
+  controlContainer.appendChild(submit);
   rootControllerContainer.appendChild(controlContainer);
 
 }
 
+function onSubmit(e) {
+  let time = document.getElementById('timeSelector').value;
+  let lowT = document.getElementById('lowT').value;
+  // let highT = document.getElementById('highT').value;
 
+  loadTimeFile(time, lowT);
+  
+}
+
+// This 
 function createPipeline(fileName, fileContents) {
   // // Create UI
   setSelectors();
@@ -231,7 +262,59 @@ function createPipeline(fileName, fileContents) {
 
   source = vtpReader.getOutputData(0);
   source.buildCells();
-  source.buildLinks();
+  // source.buildLinks();
+
+
+  // // D3 Data Loading
+  // loadData().then(function(data1) {
+  //   resData = data1;
+  //   var canvas = d3.select('body').append('svg')
+  //     .attr('id', 'data-viewer')
+  //     .style('width', '50%')
+  //     .style('height', '100%')
+  //     .style('float', 'right')
+  //     .style('background-color', 'gray')
+
+  //   makeHisto(canvas, data1['reservoir_data']['unstructured']['poro'], 0, 'poro');
+  //   makeHisto(canvas, data1['reservoir_data']['unstructured']['perm'], 200, 'perm');
+  //   makeHisto(canvas, data1['reservoir_data']['unstructured']['pressure'][0], 400, 'pressure');
+  //   makeHisto(canvas, data1['reservoir_data']['unstructured']['sgas'][0], 600, 'sgas');
+
+  //   let cyls = data1['reservoir_data']['well_cylinders'];
+  //   for (let i = 0; i < cyls['centers'].length; i++) {
+  //     createCylinder(cyls['heights'][i], 10, 10, cyls['centers'][i]);
+  //   }
+
+
+    // const colorByOptions = [{ value: ':', label: 'Solid color' }].concat(
+    //   source
+    //     .getPointData()
+    //     .getArrays()
+    //     .map((a) => ({
+    //       label: `(p) ${a.getName()}`,
+    //       value: `PointData:${a.getName()}`,
+    //     })),
+    //   source
+    //     .getCellData()
+    //     .getArrays()
+    //     .map((a) => ({
+    //       label: `${a.getName()}`,
+    //       value: `CellData:${a.getName()}`,
+    //     }))
+    // );
+    // colorBySelector.innerHTML = colorByOptions
+    //   .map(
+    //     ({ label, value }) =>
+    //       `<option value="${value}" ${
+    //         field === value ? 'selected="selected"' : ''
+    //       }>${label}</option>`
+    //   )
+    //   .join('');
+
+    // colorBySelector.addEventListener('change', updateColorBy);
+    // updateColorBy({ target: colorBySelector });
+  // });
+
 
   mapper = vtkMapper.newInstance({
     interpolateScalarsBeforeMapping: false,
@@ -295,24 +378,29 @@ function createPipeline(fileName, fileContents) {
     let currProp = colorBySelector.options[colorBySelector.selectedIndex].text;
     let t = event.target.value.toString();
 
-    // This assumes that the histo plots change with time 
-    // This is not true for PORO, PERM, so we need to check if the plot needs to be updated in the first place
-    // Hardcode check here at the moment
-    let currProp_lower = currProp.toLowerCase();
-    if (currProp_lower == 'pressure' || currProp_lower == 'sgas') {
-      let p = document.getElementById('pressure');
-      p.remove();
-      p = document.getElementById('sgas');
-      p.remove();
 
-      let c = d3.select('#data-viewer');
-      let d = resData['reservoir_data']['unstructured']['pressure'][t]
-      makeHisto(c, d, 400, 'pressure');
-      d = resData['reservoir_data']['unstructured']['sgas'][t]
-      makeHisto(c, d, 600, 'sgas');
+    let currProp_lower = currProp.toLowerCase();
+    // Update histograms of time-dependent properties
+    let uData = resData['reservoir_data']['unstructured'];
+    let offset = 0;
+    for (let p in uData) {
+      if (Array.isArray(uData[p])) {
+        if (Array.isArray(uData[p][0]) && !p.includes('var')) {
+
+          // Remove histogram, then make a new one with updated data
+          let hist = document.getElementById(p);
+          hist.remove();
+    
+          let c = d3.select('#data-viewer');
+          let d = uData[p][t]
+          makeHisto(c, d, 400 + 200 * offset, p);
+          offset += 1;
+        }
+      }
     }
         
-    loadTimeFile(event.target.value);
+    let lowT = document.getElementById('lowT').value;
+    loadTimeFile(event.target.value, lowT);
     renderWindow.render();
 
   }
@@ -348,9 +436,17 @@ function createPipeline(fileName, fileContents) {
     )
     .join('');
 
+    // colorBySelector.addEventListener('change', updateColorBy);
+    // updateColorBy({ target: colorBySelector });
+
   // Chooses which property is displayed on the grid
   // This currently is a performance bottleneck
   function updateColorBy(event) {
+    // Remove the inside actor if it is present, only show outer skin
+    renderer.removeActor(actor_inside);
+    actor.getProperty().setOpacity(1);
+    document.getElementById('lowT').value = '';  // Get rid of 
+
     const [location, colorByArrayName] = event.target.value.split(':');
     const interpolateScalarsBeforeMapping = location === 'PointData';
     let colorMode = ColorMode.DEFAULT;
@@ -506,6 +602,19 @@ function createCylinder(height, radius, resolution, center) {
   cylinder.set({height: height, radius: radius, resolution: resolution, center: center, direction: [0,0,1]});
 }
 
+function loadUnstructured(file) {
+  const reader = new FileReader();
+  reader.onload = function onLoad(e) {
+
+  // VTK pipeline
+  vtpReader.parseAsArrayBuffer(reader.result);
+  source_inside = vtpReader.getOutputData(0);
+  source_inside.buildCells();
+  };
+  // TODO: currently hardcoded
+  reader.readAsArrayBuffer(file);
+}
+
 function loadFile(file, nfiles) {
   const reader = new FileReader();
   reader.onload = function onLoad(e) {
@@ -519,106 +628,109 @@ function loadFile(file, nfiles) {
   reader.readAsArrayBuffer(file);
 }
 
-// function loadTimeFile(file, currProp) {
-function loadTimeFile(time) {
-  let timeFiles = ["PRESSURE", "SGAS"]
+function loadTimeFile(time, threshold_value) {
+  let timeFiles = ["PRESSURE", "SGAS", "PRESSURE_VAR", "SGAS_VAR"];
   let currProp = colorBySelector.options[colorBySelector.selectedIndex].text;
 
-
-  let points = source.getPoints();
-  let polys = source.getPolys();
-  let polys_data = polys.getData();
-  let points_data = points.getData();
-  let cells_loc_data = source.getCells().getLocationArray();
-
-  let thresholdBy = 'SGAS';
-  let threshold_value = .01;
-  let newCellData = [];
-  let cellDataIdx = [];
-
-  // Get thresholded cell data for new array
-  let data = resData['reservoir_data']['unstructured'][thresholdBy.toLowerCase()][time]
-  for (let i = 0; i < data.length; i++) {
-    if (data[i] > threshold_value) {  
-      newCellData.push(data[i]);
-      cellDataIdx.push(i);
+  // Update the threholded inside
+  if (threshold_value.length > 0) {
+    let points = source_inside.getPoints();
+    let polys = source_inside.getPolys();
+    let polys_data = polys.getData();
+    let points_data = points.getData();
+    let cells_loc_data = source_inside.getCells().getLocationArray();
+  
+    let thresholdBy = currProp;
+    let newCellData = [];
+    let cellDataIdx = [];
+  
+    // Get thresholded cell data for new array
+    if (Array.isArray(resData['reservoir_data']['unstructured'][thresholdBy.toLowerCase()][time])){  
+      var data = resData['reservoir_data']['unstructured'][thresholdBy.toLowerCase()][time]  // time-series property, eg pressure
     }
+    else {
+      var data = resData['reservoir_data']['unstructured'][thresholdBy.toLowerCase()] // static property, eg porosity
+    }
+    for (let i = 0; i < data.length; i++) {
+      if (data[i] > threshold_value) {  
+        newCellData.push(data[i]);
+        cellDataIdx.push(i);
+      }
+    }
+  
+    // Get thresholded polys/points data for new arrays
+    let newPolysData= [];
+    let newPointsData = [];
+    let currPolyPtr = 0;
+    for (let i = 0; i < cellDataIdx.length; i++) {
+      let polys_idx = cells_loc_data[0][cellDataIdx[i]];
+      let pd = polys_data.slice(polys_idx, polys_idx + 5);
+      let npd = [pd[0]];
+      for (let k = currPolyPtr; k < currPolyPtr + 4; k++) {
+        npd.push(k);
+      }
+      currPolyPtr += 4;
+      newPolysData.push(...npd);
+  
+      for (let j = 1; j < pd.length; j++) {
+        let poly_ptr = pd[j] * 3;
+        let poly_pts = points_data.slice(poly_ptr, poly_ptr + 3);
+        newPointsData.push(...poly_pts);
+      }
+    }
+  
+    let newPolys = vtk.Common.DataModel.vtkPolyData.newInstance();
+  
+    newPolys.getCellData().setScalars(
+      vtkDataArray.newInstance({name: currProp, values: newCellData})
+    )
+    newPolys.getPoints().setData(newPointsData);
+    newPolys.getPolys().setData(newPolysData);
+  
+    const mapper2 = vtkMapper.newInstance();
+    actor_inside.setMapper(mapper2);
+    actor.getProperty().setOpacity(0.05);
+    mapper2.setInputData(newPolys);
+  
+    actor_inside.setScale(1, 1, 5);
+    renderer.addActor(actor_inside);
+  
+    let dMax = resData['reservoir_data']['structured']['dataRanges'][currProp]['max']
+    let dMin = resData['reservoir_data']['structured']['dataRanges'][currProp]['min']
+  
+    const dataRange = [dMin, dMax]
+    const preset = vtkColorMaps.getPresetByName(presetSelector.value);
+    lookupTable.applyColorMap(preset);
+    lookupTable.setMappingRange(dMin, dMax);
+    lookupTable.updateRange();
   }
 
-  // Get thresholded polys/points data for new arrays
-  let newPolysData= [];
-  let newPointsData = [];
-  let currPolyPtr = 0;
-  for (let i = 0; i < cellDataIdx.length; i++) {
-    // probably faster to reference cells array (from buildCells())
-    let polys_idx = cells_loc_data[0][cellDataIdx[i]];
-    // let polys_idx = cellDataIdx[i] * 5;
-    let pd = polys_data.slice(polys_idx, polys_idx + 5);
-    let npd = [pd[0]];
-    for (let k = currPolyPtr; k < currPolyPtr + 4; k++) {
-      npd.push(k);
+  // Update the skin only
+  else {
+    let cell_data = source.getCellData();
+    let arrays = cell_data.getArrays();
+    // for (prop of arrays) {
+    //   let name = prop.getName();
+    //   if (timeFiles.includes(name)) {
+    //     let data = cell_data.getArrayByName(name);
+    //     data.setData(resData['reservoir_data']['structured'][name.toLowerCase()][time]);
+    //   }
+    // }
+    if (timeFiles.includes(currProp)) {
+      let data = cell_data.getArrayByName(currProp);
+      data.setData(resData['reservoir_data']['structured'][currProp.toLowerCase()][time]);
     }
-    currPolyPtr += 4;
-    newPolysData.push(...npd);
 
-    for (let j = 1; j < pd.length; j++) {
-      let poly_ptr = pd[j] * 3;
-      let poly_pts = points_data.slice(poly_ptr, poly_ptr + 3);
-      newPointsData.push(...poly_pts);
-    }
+    let dMax = resData['reservoir_data']['structured']['dataRanges'][currProp]['max']
+    let dMin = resData['reservoir_data']['structured']['dataRanges'][currProp]['min']
+
+    const dataRange = [dMin, dMax]
+    const preset = vtkColorMaps.getPresetByName(presetSelector.value);
+    lookupTable.applyColorMap(preset);
+    lookupTable.setMappingRange(dataRange[0], dataRange[1]);
+    lookupTable.updateRange();
   }
 
-  let newPolys = vtk.Common.DataModel.vtkPolyData.newInstance();
-
-  newPolys.getCellData().setScalars(
-    vtkDataArray.newInstance({name: 'SGAS', values: newCellData})
-  )
-  newPolys.getPoints().setData(newPointsData);
-  newPolys.getPolys().setData(newPolysData);
-
-
-  let npp = newPolys.getPoints().getData();
-  let nps = newPolys.getPolys().getData();
-  let ncd = newPolys.getCellData().getArrayByName('SGAS').getData();
-
-  // let actor2 = vtkActor.newInstance();
-  const mapper2 = vtkMapper.newInstance();
-  actor_inside.setMapper(mapper2);
-  actor.getProperty().setOpacity(0.05);
-  // mapper.setInputConnection(newPolys.getOutputPort());
-  mapper2.setInputData(newPolys);
-
-  actor_inside.setScale(1, 1, 5);
-  renderer.addActor(actor2);
-
-  let dMax = resData['reservoir_data']['unstructured']['dataRanges'][currProp]['max']
-  let dMin = resData['reservoir_data']['unstructured']['dataRanges'][currProp]['min']
-
-  const dataRange = [dMin, dMax]
-  const preset = vtkColorMaps.getPresetByName(presetSelector.value);
-  lookupTable.applyColorMap(preset);
-  lookupTable.setMappingRange(dMin, dMax);
-  lookupTable.updateRange();
-
-
-  // let arrays = cell_data.getArrays();
-  // for (prop of arrays) {
-  //   let name = prop.getName();
-
-  //   if (timeFiles.includes(name)) {
-  //     let data = cell_data.getArrayByName(name);
-  //     data.setData(resData['reservoir_data']['unstructured'][name.toLowerCase()][time]);
-  //   }
-  // }
-
-  // let dMax = resData['reservoir_data']['unstructured']['dataRanges'][currProp]['max']
-  // let dMin = resData['reservoir_data']['unstructured']['dataRanges'][currProp]['min']
-
-  // const dataRange = [dMin, dMax]
-  // const preset = vtkColorMaps.getPresetByName(presetSelector.value);
-  // lookupTable.applyColorMap(preset);
-  // lookupTable.setMappingRange(dataRange[0], dataRange[1]);
-  // lookupTable.updateRange();
 
   renderWindow.render();
 }
@@ -633,6 +745,7 @@ function load(container, options) {
     createViewer(container);
     let count = options.files.length;
     loadFile(options.files[0], count);
+    loadUnstructured(options.files[1]);
 
     updateCamera(renderer.getActiveCamera());
   } else if (options.fileURL) {
@@ -691,11 +804,10 @@ function load(container, options) {
     makeHisto(canvas, data1['reservoir_data']['unstructured']['pressure'][0], 400, 'pressure');
     makeHisto(canvas, data1['reservoir_data']['unstructured']['sgas'][0], 600, 'sgas');
 
-    // let cyls = data1['reservoir_data']['well_cylinders'];
-    // for (let i = 0; i < cyls['centers'].length; i++) {
-    //   createCylinder(cyls['heights'][i], 10, 10, cyls['centers'][i]);
-    // }
-
+    let cyls = data1['reservoir_data']['well_cylinders'];
+    for (let i = 0; i < cyls['centers'].length; i++) {
+      createCylinder(cyls['heights'][i], 10, 10, cyls['centers'][i]);
+    }
   });
 }
 

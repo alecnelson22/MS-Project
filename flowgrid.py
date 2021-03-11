@@ -1063,6 +1063,7 @@ class CMG(FlowGrid):
         super(CMG, self).__init__()
         self.out_dir = 'output'
         self.out_props = {}
+        self.data_range = {}
 
     def CORNER(self, fname, cp_type):
         """
@@ -1758,6 +1759,9 @@ class CMG(FlowGrid):
                     # data = np.reshape(data, (self.size[0], self.size[1], self.size[2]), order="F")
                     data = np.reshape(data, (self.size[2], self.size[1], self.size[0]), order="C")
                     break
+
+        self.data_range[prop_title] = {'max': np.max(data), 'min': np.min(data)}
+
         self.add_data(data, prop_title)
         self.out_props[prop_title] = data
 
@@ -1777,6 +1781,7 @@ class CMG(FlowGrid):
         for iac in d.flatten(order='C'):
             ac.InsertNextTuple1(iac)
         self.Grid.GetCellData().AddArray(ac)
+
 
     # Populates entire K-layer with val (for reading .out property)
     def _k_full(self, val):
@@ -2056,7 +2061,6 @@ class CMG(FlowGrid):
             Refinement blueprint from get_refined_blocks
             Only supports reading of 2D refinements
         """
-        data_range = {}
         for prop in out_props:
             attr_name = prop[0].replace(" ", "").strip()
             attr_title = prop[1]
@@ -2065,7 +2069,7 @@ class CMG(FlowGrid):
                 self.times = []
             build = False
             found = False
-            data_range[attr_title] = {'max': 0, 'min': 99999999}
+            self.data_range[attr_title] = {'max': 0, 'min': 99999999}
 
             print('Reading ' + attr_title + ' output')
             with open(fname, "r") as fp:
@@ -2097,10 +2101,10 @@ class CMG(FlowGrid):
 
                                 d_max = np.max(grid)
                                 d_min = np.min(grid)
-                                if d_max > data_range[attr_title]['max']:
-                                    data_range[attr_title]['max'] = d_max
-                                elif d_min < data_range[attr_title]['min']:
-                                    data_range[attr_title]['min'] = d_min
+                                if d_max > self.data_range[attr_title]['max']:
+                                    self.data_range[attr_title]['max'] = d_max
+                                elif d_min < self.data_range[attr_title]['min']:
+                                    self.data_range[attr_title]['min'] = d_min
 
 
                                 continue
@@ -2173,10 +2177,10 @@ class CMG(FlowGrid):
 
                                         d_max = np.max(layers)
                                         d_min = np.min(layers)
-                                        if d_max > data_range[attr_title]['max']:
-                                            data_range[attr_title]['max'] = d_max
-                                        elif d_min < data_range[attr_title]['min']:
-                                            data_range[attr_title]['min'] = d_min
+                                        if d_max > self.data_range[attr_title]['max']:
+                                            self.data_range[attr_title]['max'] = d_max
+                                        elif d_min < self.data_range[attr_title]['min']:
+                                            self.data_range[attr_title]['min'] = d_min
 
 
                                         # Add local grid refinements
@@ -2192,10 +2196,14 @@ class CMG(FlowGrid):
                 else:
                     if len(self.times) == 0:
                         self.times = list(self.out_props[attr_title].keys())
+
+
+
+
+    def export_data_range(self):
         self._check_out('')
         with open(os.path.join(self.out_dir, 'output_data_ranges.json'), "w") as fo:
-            json.dump(data_range, fo)
-
+            json.dump(self.data_range, fo)
 
             # TODO: lightly tested, may have issues- only works with 2D
     def get_refined_blocks(self, fname):
