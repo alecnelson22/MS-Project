@@ -245,9 +245,9 @@ function setSelectors() {
 function onSubmit(e) {
   let time = document.getElementById('timeSelector').value;
   let lowT = document.getElementById('lowT').value;
-  // let highT = document.getElementById('highT').value;
+  let highT = document.getElementById('highT').value;
 
-  loadTimeFile(time, lowT);
+  loadTimeFile(time, lowT, highT);
   
 }
 
@@ -385,12 +385,12 @@ function createPipeline(fileName, fileContents) {
     let offset = 0;
     for (let p in uData) {
       if (Array.isArray(uData[p])) {
-        if (Array.isArray(uData[p][0]) && !p.includes('var')) {
+        // TODO hardcoded
+        if (Array.isArray(uData[p][0]) && !p.includes('var') && !p.includes('ml')) {
 
           // Remove histogram, then make a new one with updated data
           let hist = document.getElementById(p);
           hist.remove();
-    
           let c = d3.select('#data-viewer');
           let d = uData[p][t]
           makeHisto(c, d, 400 + 200 * offset, p);
@@ -398,9 +398,29 @@ function createPipeline(fileName, fileContents) {
         }
       }
     }
+
+    let pressure_ensemble = d3.select('#pressure-ensemble');
+    let sgas_ensemble = d3.select('#sgas-ensemble');
+    var x = d3.scaleLinear().range([0, 200]);
+    x.domain([0, 64]);
+
+    //pressure_ensemble.select('#time-line').remove();
+    pressure_ensemble.append("line")
+      .attr('id', 'time-line')
+      .attr("x1", 50)
+      .attr("y1", 0)
+      .attr("x2", 50)
+      .attr("y2", 200)
+      // .attr('id', 'time-line')
+      // .attr("x1", x(parseInt(t)))
+      // .attr("y1", 0)
+      // .attr("x2", x(parseInt(t)))
+      // .attr("y2", 200)
+
         
     let lowT = document.getElementById('lowT').value;
-    loadTimeFile(event.target.value, lowT);
+    let highT = document.getElementById('highT').value;
+    loadTimeFile(event.target.value, lowT, highT);
     renderWindow.render();
 
   }
@@ -628,12 +648,12 @@ function loadFile(file, nfiles) {
   reader.readAsArrayBuffer(file);
 }
 
-function loadTimeFile(time, threshold_value) {
+function loadTimeFile(time, lowThresh, highThresh) {
   let timeFiles = ["PRESSURE", "SGAS", "PRESSURE_VAR", "SGAS_VAR"];
   let currProp = colorBySelector.options[colorBySelector.selectedIndex].text;
 
   // Update the threholded inside
-  if (threshold_value.length > 0) {
+  if (lowThresh.length > 0 || highThresh.length > 0) {
     let points = source_inside.getPoints();
     let polys = source_inside.getPolys();
     let polys_data = polys.getData();
@@ -652,9 +672,24 @@ function loadTimeFile(time, threshold_value) {
       var data = resData['reservoir_data']['unstructured'][thresholdBy.toLowerCase()] // static property, eg porosity
     }
     for (let i = 0; i < data.length; i++) {
-      if (data[i] > threshold_value) {  
-        newCellData.push(data[i]);
-        cellDataIdx.push(i);
+
+      if (lowThresh.length > 0 && highThresh.length > 0) {
+        if (data[i] > lowThresh && data[i] < highThresh) {  
+          newCellData.push(data[i]);
+          cellDataIdx.push(i);
+        }
+      }
+      else if (lowThresh.length > 0) {
+        if (data[i] > lowThresh) {  
+          newCellData.push(data[i]);
+          cellDataIdx.push(i);
+        }
+      }
+      else if (highThresh.length > 0) {
+        if (data[i] < highThresh) {  
+          newCellData.push(data[i]);
+          cellDataIdx.push(i);
+        }
       }
     }
   
@@ -804,6 +839,102 @@ function load(container, options) {
     makeHisto(canvas, data1['reservoir_data']['unstructured']['pressure'][0], 400, 'pressure');
     makeHisto(canvas, data1['reservoir_data']['unstructured']['sgas'][0], 600, 'sgas');
 
+
+    let pMax = resData['reservoir_data']['time_dataRanges']['PRESSURE']['max'];
+    let pMin = resData['reservoir_data']['time_dataRanges']['PRESSURE']['min'];
+    let sMax = resData['reservoir_data']['time_dataRanges']['SGAS']['max'];
+    let sMin = resData['reservoir_data']['time_dataRanges']['SGAS']['min'];
+
+    // PRESSURE range plot
+    var plot = canvas.append('g')
+      .attr('id', 'pressure-ensemble')
+      .attr('transform', 'translate(60, 270)');
+    // set the ranges
+    var x = d3.scaleLinear().range([0, 200]);
+    var y = d3.scaleLinear().range([200, 0]);
+    // Scale the range of the data
+    x.domain([0, pMax.length]);
+    y.domain([d3.min(pMin), d3.max(pMax)]);
+    // Add the pMax path
+    plot.append("path")
+    .datum(pMax)
+    .style("stroke", "#0073e6")
+    .style("fill", "none")
+    .attr("d", d3.line()
+                  .x(function(d,i) { return x(i); })
+                  .y(function(d) { return y(d); })
+              );
+    // Add the pMax path
+    plot.append("path")
+    .datum(pMin)
+    .style("stroke", "#0073e6")
+    .style("fill", "none")
+    .attr("d", d3.line()
+                  .x(function(d,i) { return x(i); })
+                  .y(function(d) { return y(d); })
+              );
+    // Add X axis
+    plot.append("g")
+      .attr("transform", "translate(0,200)")
+      .call(d3.axisBottom(x));
+    // Add Y axis
+    plot.append("g")
+      .call(d3.axisLeft(y));
+    plot.append("text")
+    .attr("x", 100)
+    .attr("y", -5)
+    .attr("fill", "#000")
+    .attr("font-weight", "bold")
+    .attr("text-anchor", "middle")
+    .attr("font-size", "x-small")
+    .text("Average Ensemble Pressure");
+
+    // SGAS range plot
+    plot = canvas.append('g')
+      .attr('id', 'sgas-ensemble')
+      .attr('transform', 'translate(330, 270)');
+    // set the ranges
+    var x = d3.scaleLinear().range([0, 200]);
+    var y = d3.scaleLinear().range([200, 0]);
+    // Scale the range of the data
+    x.domain([0, sMax.length]);
+    y.domain([d3.min(sMin), d3.max(sMax)]);
+    // Add the sMax path
+    plot.append("path")
+    .datum(sMax)
+    .style("stroke", "#0073e6")
+    .style("fill", "none")
+    .attr("d", d3.line()
+                  .x(function(d,i) { return x(i); })
+                  .y(function(d) { return y(d); })
+              );
+    // Add the sMin path
+    plot.append("path")
+    .datum(sMin)
+    .style("stroke", "#0073e6")
+    .style("fill", "none")
+    .attr("d", d3.line()
+                  .x(function(d,i) { return x(i); })
+                  .y(function(d) { return y(d); })
+              );
+    // Add X axis
+    plot.append("g")
+      .attr("transform", "translate(0,200)")
+      .call(d3.axisBottom(x));
+    // Add Y axis
+    plot.append("g")
+      .call(d3.axisLeft(y));
+    plot.append("text")
+    .attr("x", 100)
+    .attr("y", -5)
+    .attr("fill", "#000")
+    .attr("font-weight", "bold")
+    .attr("text-anchor", "middle")
+    .attr("font-size", "x-small")
+    .text("Average Ensemble Gas Saturation");
+
+
+
     let cyls = data1['reservoir_data']['well_cylinders'];
     for (let i = 0; i < cyls['centers'].length; i++) {
       createCylinder(cyls['heights'][i], 10, 10, cyls['centers'][i]);
@@ -867,7 +998,8 @@ function makeHisto(canvas, rData, xOffset, name) {
     .selectAll("rect")
     .data(buckets)
     .join("rect")
-    .attr("fill", (d => binColor(d.x0)))
+    .attr("fill",'#0073e6')
+    // .attr("fill", (d => binColor(d.x0)))
     // .attr("x", d => x(d.x0) + 1)
     .attr("x", (d,i) => xOffset + (i * 8 + 30))
     // .attr("width", d => Math.max(0, x(d.x1) - x(d.x0) - 1))
