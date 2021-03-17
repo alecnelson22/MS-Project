@@ -179,11 +179,12 @@ function setSelectors() {
   representationSelector.value = '1:2:0';
 
   const colorBySelector = document.createElement('select');
-  // colorBySelector.setAttribute('class', selectorClass);
   colorBySelector.setAttribute('id', 'colorBySelector');
 
+  const thresholdBySelector = document.createElement('select');
+  thresholdBySelector.setAttribute('id', 'thresholdBySelector');
+
   const componentSelector = document.createElement('select');
-  // componentSelector.setAttribute('class', selectorClass);
   componentSelector.setAttribute('id', 'componentSelector');
   componentSelector.style.display = 'none';
 
@@ -219,7 +220,21 @@ function setSelectors() {
   submit.setAttribute('onclick', 'onSubmit()');
   submit.setAttribute('value', 'Apply');
 
+  // Append to container to continue to next flex box line
+  function breakLine() {
+    let breakLine = document.createElement('div');
+    breakLine.setAttribute('class', 'break');
+    return breakLine;
+  }
 
+  // Create a text label
+  function makeLabel(text) {
+    let label = document.createElement('div');
+    let labelText = document.createTextNode(text);
+    label.appendChild(labelText);
+    label.style.color = 'white';
+    return label;
+  }
 
   const labelSelector = document.createElement('label');
   labelSelector.style.color = 'white';
@@ -231,10 +246,21 @@ function setSelectors() {
   controlContainer.appendChild(labelSelector);
   controlContainer.appendChild(representationSelector);
   controlContainer.appendChild(presetSelector);
-  controlContainer.appendChild(colorBySelector);
   controlContainer.appendChild(componentSelector);
-  controlContainer.appendChild(opacitySelector);
+  controlContainer.appendChild(makeLabel('Time step: '));
   controlContainer.appendChild(timeSelector);
+
+  controlContainer.appendChild(breakLine());
+
+  controlContainer.appendChild(makeLabel('Color by: '));
+  controlContainer.appendChild(colorBySelector);
+  controlContainer.appendChild(makeLabel('Opacity: '));
+  controlContainer.appendChild(opacitySelector);
+
+  controlContainer.appendChild(breakLine());
+
+  controlContainer.appendChild(makeLabel('Threshold by: '));
+  controlContainer.appendChild(thresholdBySelector);
   controlContainer.appendChild(lowT);
   controlContainer.appendChild(highT);
   controlContainer.appendChild(submit);
@@ -262,59 +288,6 @@ function createPipeline(fileName, fileContents) {
 
   source = vtpReader.getOutputData(0);
   source.buildCells();
-  // source.buildLinks();
-
-
-  // // D3 Data Loading
-  // loadData().then(function(data1) {
-  //   resData = data1;
-  //   var canvas = d3.select('body').append('svg')
-  //     .attr('id', 'data-viewer')
-  //     .style('width', '50%')
-  //     .style('height', '100%')
-  //     .style('float', 'right')
-  //     .style('background-color', 'gray')
-
-  //   makeHisto(canvas, data1['reservoir_data']['unstructured']['poro'], 0, 'poro');
-  //   makeHisto(canvas, data1['reservoir_data']['unstructured']['perm'], 200, 'perm');
-  //   makeHisto(canvas, data1['reservoir_data']['unstructured']['pressure'][0], 400, 'pressure');
-  //   makeHisto(canvas, data1['reservoir_data']['unstructured']['sgas'][0], 600, 'sgas');
-
-  //   let cyls = data1['reservoir_data']['well_cylinders'];
-  //   for (let i = 0; i < cyls['centers'].length; i++) {
-  //     createCylinder(cyls['heights'][i], 10, 10, cyls['centers'][i]);
-  //   }
-
-
-    // const colorByOptions = [{ value: ':', label: 'Solid color' }].concat(
-    //   source
-    //     .getPointData()
-    //     .getArrays()
-    //     .map((a) => ({
-    //       label: `(p) ${a.getName()}`,
-    //       value: `PointData:${a.getName()}`,
-    //     })),
-    //   source
-    //     .getCellData()
-    //     .getArrays()
-    //     .map((a) => ({
-    //       label: `${a.getName()}`,
-    //       value: `CellData:${a.getName()}`,
-    //     }))
-    // );
-    // colorBySelector.innerHTML = colorByOptions
-    //   .map(
-    //     ({ label, value }) =>
-    //       `<option value="${value}" ${
-    //         field === value ? 'selected="selected"' : ''
-    //       }>${label}</option>`
-    //   )
-    //   .join('');
-
-    // colorBySelector.addEventListener('change', updateColorBy);
-    // updateColorBy({ target: colorBySelector });
-  // });
-
 
   mapper = vtkMapper.newInstance({
     interpolateScalarsBeforeMapping: false,
@@ -374,12 +347,8 @@ function createPipeline(fileName, fileContents) {
   // --------------------------------------------------------------------
 
   function updateTime(event) {
-    let colorBySelector = document.getElementById('colorBySelector'); 
-    let currProp = colorBySelector.options[colorBySelector.selectedIndex].text;
     let t = event.target.value.toString();
 
-
-    let currProp_lower = currProp.toLowerCase();
     // Update histograms of time-dependent properties
     let uData = resData['reservoir_data']['unstructured'];
     let offset = 0;
@@ -399,23 +368,134 @@ function createPipeline(fileName, fileContents) {
       }
     }
 
-    let pressure_ensemble = d3.select('#pressure-ensemble');
-    let sgas_ensemble = d3.select('#sgas-ensemble');
-    var x = d3.scaleLinear().range([0, 200]);
+
+    var pressure_ensemble = d3.select('#pressure-ensemble');
+    // var sgas_ensemble = d3.select('#sgas-ensemble');
+    var x = d3.scaleLinear().range([0, 800]);
     x.domain([0, 64]);
 
-    //pressure_ensemble.select('#time-line').remove();
-    pressure_ensemble.append("line")
-      .attr('id', 'time-line')
-      .attr("x1", 50)
-      .attr("y1", 0)
-      .attr("x2", 50)
-      .attr("y2", 200)
-      // .attr('id', 'time-line')
-      // .attr("x1", x(parseInt(t)))
-      // .attr("y1", 0)
-      // .attr("x2", x(parseInt(t)))
-      // .attr("y2", 200)
+    pressure_ensemble.select('#pressure-violin').remove();
+    // Make a violin plot of pressure data at a single time step
+    let data = resData['reservoir_data']['pressure_violin'][t];
+
+    let newData = [];
+
+    let bins = Object.keys(data);
+    let counts = Object.values(data);
+    let countsMax = d3.max(counts);
+
+    for (let i = 0; i < bins.length; i++) {
+      if (bins[i] > 13310 && bins[i] < 17000) { //TODO hardcoded
+        newData.push({"bin": bins[i], "count": counts[i]});
+      }
+    }
+
+    var violin = pressure_ensemble.append('g')
+      .attr('id', 'pressure-violin')
+      .attr("transform", "translate(" + x(t) + ", 0)")
+    
+    x = d3.scaleLinear().range([0, 150]);
+    y = d3.scaleLinear().range([400, 0]);
+    x.domain([0, countsMax]);
+    y.domain([13310, 17000]);  //TODO hardcoded
+
+    violin.append("path")
+      .datum(newData)
+      .style("stroke", "#0073e6")
+      .style("fill", "none")
+      .attr("d", d3.line()
+                    .curve(d3.curveBasis)
+                    .x(function(d,i) { return x(d.count); })
+                    .y(function(d,i) { return y(d.bin); })
+                );
+
+    x.range([0, -150]);
+    violin.append("path")
+    .datum(newData)
+    .style("stroke", "#0073e6")
+    .style("fill", "none")
+    .attr("d", d3.line()
+                  .curve(d3.curveBasis)
+                  .x(function(d,i) { return x(d.count); })
+                  .y(function(d,i) { return y(d.bin); })
+              );
+
+    violin.append("line")
+    .style("stroke", "#ff4d4d")
+    .attr('id', 'time-line-p')
+    .attr("x1", 0)
+    .attr("y1", 0)
+    .attr("x2", 0)
+    .attr("y2", 400)
+
+    //// SGAS ENSEMBLE
+    // var sgas_ensemble = d3.select('#sgas-ensemble');
+    // // var sgas_ensemble = d3.select('#sgas-ensemble');
+    // var x = d3.scaleLinear().range([0, 800]);
+    // x.domain([0, 64]);
+
+    // sgas_ensemble.select('#sgas-violin').remove();
+    // // Make a violin plot of pressure data at a single time step
+    // let data = resData['reservoir_data']['sgas_violin'][t];
+
+    // let newData = [];
+
+    // let bins = Object.keys(data);
+    // let counts = Object.values(data);
+    // let countsMax = d3.max(counts);
+
+    // for (let i = 0; i < bins.length; i++) {
+    //   if (bins[i] < .45) { //TODO hardcoded
+    //     newData.push({"bin": bins[i], "count": counts[i]});
+    //   }
+    // }
+
+    // var violin = sgas_ensemble.append('g')
+    //   .attr('id', 'sgas-violin')
+    //   .attr("transform", "translate(" + x(t) + ", 0)")
+    
+    // x = d3.scaleLinear().range([0, 150]);
+    // y = d3.scaleLinear().range([400, 0]);
+    // x.domain([0, countsMax]);
+    // y.domain([0, .45]);  //TODO hardcoded
+
+    // violin.append("path")
+    //   .datum(newData)
+    //   .style("stroke", "#0073e6")
+    //   .style("fill", "none")
+    //   .attr("d", d3.line()
+    //                 .curve(d3.curveBasis)
+    //                 .x(function(d,i) { return x(d.count); })
+    //                 .y(function(d,i) { return y(d.bin); })
+    //             );
+
+    // x.range([0, -150]);
+    // violin.append("path")
+    // .datum(newData)
+    // .style("stroke", "#0073e6")
+    // .style("fill", "none")
+    // .attr("d", d3.line()
+    //               .curve(d3.curveBasis)
+    //               .x(function(d,i) { return x(d.count); })
+    //               .y(function(d,i) { return y(d.bin); })
+    //           );
+
+    // violin.append("line")
+    // .style("stroke", "#ff4d4d")
+    // .attr("x1", 0)
+    // .attr("y1", 0)
+    // .attr("x2", 0)
+    // .attr("y2", 400)
+
+
+    // sgas_ensemble.select('#time-line-s').remove();
+    // sgas_ensemble.append("line")
+    //   .style("stroke", "#ff4d4d")
+    //   .attr('id', 'time-line-s')
+    //   .attr("x1", x(parseInt(t)))
+    //   .attr("y1", 0)
+    //   .attr("x2", x(parseInt(t)))
+    //   .attr("y2", 200)
 
         
     let lowT = document.getElementById('lowT').value;
@@ -456,8 +536,17 @@ function createPipeline(fileName, fileContents) {
     )
     .join('');
 
-    // colorBySelector.addEventListener('change', updateColorBy);
-    // updateColorBy({ target: colorBySelector });
+// --------------------------------------------------------------------
+  // Threshold Options
+  // --------------------------------------------------------------------
+  thresholdBySelector.innerHTML = colorByOptions
+  .map(
+    ({ label, value }) =>
+      `<option value="${value}" ${
+        field === value ? 'selected="selected"' : ''
+      }>${label}</option>`
+  )
+  .join('');
 
   // Chooses which property is displayed on the grid
   // This currently is a performance bottleneck
@@ -516,6 +605,9 @@ function createPipeline(fileName, fileContents) {
     });
     applyPreset();
   }
+
+  // thresholdBySelector.addEventListener('change', updateColorBy);
+  // updateColorBy({ target: thresholdBySelector });
 
   colorBySelector.addEventListener('change', updateColorBy);
   updateColorBy({ target: colorBySelector });
@@ -850,8 +942,8 @@ function load(container, options) {
       .attr('id', 'pressure-ensemble')
       .attr('transform', 'translate(60, 270)');
     // set the ranges
-    var x = d3.scaleLinear().range([0, 200]);
-    var y = d3.scaleLinear().range([200, 0]);
+    var x = d3.scaleLinear().range([0, 800]);
+    var y = d3.scaleLinear().range([400, 0]);
     // Scale the range of the data
     x.domain([0, pMax.length]);
     y.domain([d3.min(pMin), d3.max(pMax)]);
@@ -861,6 +953,7 @@ function load(container, options) {
     .style("stroke", "#0073e6")
     .style("fill", "none")
     .attr("d", d3.line()
+                  .curve(d3.curveBasis)
                   .x(function(d,i) { return x(i); })
                   .y(function(d) { return y(d); })
               );
@@ -870,12 +963,13 @@ function load(container, options) {
     .style("stroke", "#0073e6")
     .style("fill", "none")
     .attr("d", d3.line()
+                  .curve(d3.curveBasis)
                   .x(function(d,i) { return x(i); })
                   .y(function(d) { return y(d); })
               );
     // Add X axis
     plot.append("g")
-      .attr("transform", "translate(0,200)")
+      .attr("transform", "translate(0,400)")
       .call(d3.axisBottom(x));
     // Add Y axis
     plot.append("g")
@@ -889,49 +983,130 @@ function load(container, options) {
     .attr("font-size", "x-small")
     .text("Average Ensemble Pressure");
 
-    // SGAS range plot
-    plot = canvas.append('g')
-      .attr('id', 'sgas-ensemble')
-      .attr('transform', 'translate(330, 270)');
-    // set the ranges
-    var x = d3.scaleLinear().range([0, 200]);
-    var y = d3.scaleLinear().range([200, 0]);
-    // Scale the range of the data
-    x.domain([0, sMax.length]);
-    y.domain([d3.min(sMin), d3.max(sMax)]);
-    // Add the sMax path
-    plot.append("path")
-    .datum(sMax)
-    .style("stroke", "#0073e6")
-    .style("fill", "none")
-    .attr("d", d3.line()
-                  .x(function(d,i) { return x(i); })
-                  .y(function(d) { return y(d); })
-              );
-    // Add the sMin path
-    plot.append("path")
-    .datum(sMin)
-    .style("stroke", "#0073e6")
-    .style("fill", "none")
-    .attr("d", d3.line()
-                  .x(function(d,i) { return x(i); })
-                  .y(function(d) { return y(d); })
-              );
-    // Add X axis
-    plot.append("g")
-      .attr("transform", "translate(0,200)")
-      .call(d3.axisBottom(x));
-    // Add Y axis
-    plot.append("g")
-      .call(d3.axisLeft(y));
-    plot.append("text")
-    .attr("x", 100)
-    .attr("y", -5)
-    .attr("fill", "#000")
-    .attr("font-weight", "bold")
-    .attr("text-anchor", "middle")
-    .attr("font-size", "x-small")
-    .text("Average Ensemble Gas Saturation");
+    // Make a violin plot of pressure data at a single time step
+    let data = resData['reservoir_data']['pressure_violin'][0];
+
+    let newData = [];
+    let bins = Object.keys(data);
+    let counts = Object.values(data);
+    let countsMax = d3.max(counts);
+
+    for (let i = 0; i < bins.length; i++) {
+      if (bins[i] > 0 && bins[i] < 17000) {
+        newData.push({"bin": bins[i], "count": counts[i]});
+      }
+    }
+
+    var violin = plot.append('g')
+      .attr("transform", "translate(" + x(0) + ", 0)")
+
+    violin.append("line")
+      .style("stroke", "#ff4d4d")
+      .attr('id', 'time-line-p')
+      .attr("x1", 0)
+      .attr("y1", 0)
+      .attr("x2", 0)
+      .attr("y2", 400)
+    
+    x = d3.scaleLinear().range([0, 50]);
+    y = d3.scaleLinear().range([400, 0]);
+    x.domain([0, countsMax]);
+    y.domain([d3.min(bins), d3.max(bins)]);
+
+    violin.append("path").attr('id', 'pressure-violin')
+      .datum(newData)
+      .style("stroke", "#0073e6")
+      .style("fill", "none")
+      .attr("d", d3.line()
+                    .curve(d3.curveBasis)
+                    .x(function(d,i) { return x(d.count); })
+                    .y(function(d,i) { return y(d.bin); })
+                );
+
+
+    // // Make a violin plot of sgas data at a single time step
+    // let data = resData['reservoir_data']['sgas_violin'][0];
+
+    // let newData = [];
+    // let bins = Object.keys(data);
+    // let counts = Object.values(data);
+    // let countsMax = d3.max(counts);
+
+    // for (let i = 0; i < bins.length; i++) {
+    //   if (bins[i] > 0 && bins[i] < .98) { //TODO hardcoded
+    //     newData.push({"bin": bins[i], "count": counts[i]});
+    //   }
+    // }
+
+    // var violin = plot.append('g')
+    //   .attr("transform", "translate(" + x(0) + ", 0)")
+
+    // violin.append("line")
+    //   .style("stroke", "#ff4d4d")
+    //   .attr("x1", 0)
+    //   .attr("y1", 0)
+    //   .attr("x2", 0)
+    //   .attr("y2", 400)
+    
+    // x = d3.scaleLinear().range([0, 50]);
+    // y = d3.scaleLinear().range([400, 0]);
+    // x.domain([0, countsMax]);
+    // y.domain([d3.min(bins), d3.max(bins)]);
+
+    // violin.append("path").attr('id', 'sgas-violin')
+    //   .datum(newData)
+    //   .style("stroke", "#0073e6")
+    //   .style("fill", "none")
+    //   .attr("d", d3.line()
+    //                 .curve(d3.curveBasis)
+    //                 .x(function(d,i) { return x(d.count); })
+    //                 .y(function(d,i) { return y(d.bin); })
+    //             );
+                
+
+    // // SGAS range plot
+    // plot = canvas.append('g')
+    //   .attr('id', 'sgas-ensemble')
+    //   .attr('transform', 'translate(330, 270)');
+    // // set the ranges
+    // var x = d3.scaleLinear().range([0, 200]);
+    // var y = d3.scaleLinear().range([200, 0]);
+    // // Scale the range of the data
+    // x.domain([0, sMax.length]);
+    // y.domain([d3.min(sMin), d3.max(sMax)]);
+    // // Add the sMax path
+    // plot.append("path")
+    // .datum(sMax)
+    // .style("stroke", "#0073e6")
+    // .style("fill", "none")
+    // .attr("d", d3.line()
+    //               .x(function(d,i) { return x(i); })
+    //               .y(function(d) { return y(d); })
+    //           );
+    // // Add the sMin path
+    // plot.append("path")
+    // .datum(sMin)
+    // .style("stroke", "#0073e6")
+    // .style("fill", "none")
+    // .attr("d", d3.line()
+    //               .x(function(d,i) { return x(i); })
+    //               .y(function(d) { return y(d); })
+    //           );
+    // // Add X axis
+    // plot.append("g")
+    //   .attr("transform", "translate(0,200)")
+    //   .call(d3.axisBottom(x));
+    // // Add Y axis
+    // plot.append("g")
+    //   .call(d3.axisLeft(y));
+    // plot.append("text")
+    // .attr("x", 100)
+    // .attr("y", -5)
+    // .attr("fill", "#000")
+    // .attr("font-weight", "bold")
+    // .attr("text-anchor", "middle")
+    // .attr("font-size", "x-small")
+    // .text("Average Ensemble Gas Saturation");
 
 
 
