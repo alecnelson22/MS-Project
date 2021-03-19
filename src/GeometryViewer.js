@@ -297,7 +297,7 @@ function updateEnsemble(binRange, threshIdx=[]) {
 
   // set the ranges
   var x = d3.scaleLinear().range([0, 800]);
-  var y = d3.scaleLinear().range([400, 0]);
+  var y = d3.scaleLinear().range([600, 0]);
   // Scale the range of the data
   x.domain([0, pMax.length]); 
   y.domain(binRange);  //TODO remove outliers (hardcoded)
@@ -330,7 +330,7 @@ function updateEnsemble(binRange, threshIdx=[]) {
   // Add X axis
   plot.append("g")
     .attr('id', 'ensemble-xaxis')
-    .attr("transform", "translate(0,400)")
+    .attr("transform", "translate(0,600)")
     .call(d3.axisBottom(x));
   // Add Y axis
   plot.append("g")
@@ -413,7 +413,7 @@ function updateViolin(threshIdx=[], crop) {
     .attr("transform", "translate(" + x(time) + ", 0)")
   
   x = d3.scaleLinear().range([0, 150]);
-  y = d3.scaleLinear().range([400, 0]);
+  y = d3.scaleLinear().range([600, 0]);
   x.domain([0, countsMax]);
   y.domain(crop ? [outlierLow, outlierHigh] : [minBins, maxBins]); 
 
@@ -442,7 +442,7 @@ function updateViolin(threshIdx=[], crop) {
     .attr("x1", 0)
     .attr("y1", 0)
     .attr("x2", 0)
-    .attr("y2", 400)
+    .attr("y2", 600)
 
   return crop ? [outlierLow, outlierHigh] : [minBins, maxBins]
 }
@@ -608,10 +608,13 @@ function createPipeline(fileName, fileContents) {
     // document.getElementById('lowT').value = '';
 
     // Check if a threshold is active
-    if (document.getElementById('thresholdBySelector').value == 'None') {
+    let threshProp = document.getElementById('thresholdBySelector').options[thresholdBySelector.selectedIndex].text;
+    if (threshProp == 'None') {
+      var currentSource = source;
       var currentMapper = mapper;
     }
     else {
+      var currentSource = source_inside;
       var currentMapper = mapper_inside;
     }
 
@@ -621,7 +624,7 @@ function createPipeline(fileName, fileContents) {
     let scalarMode = ScalarMode.DEFAULT;
     const scalarVisibility = location.length > 0;
     if (scalarVisibility) {
-      const newArray = source_inside[`get${location}`]().getArrayByName(
+      const newArray = currentSource[`get${location}`]().getArrayByName(
         colorByArrayName
       );
       activeArray = newArray;
@@ -667,23 +670,43 @@ function createPipeline(fileName, fileContents) {
 
   colorBySelector.addEventListener('change', function(e) {
 
-    // If threshold is active, get color data array
+    // If threshold is active, get color data array for inner mesh
     // We already have the thresholded indices!
     let colorProp = e.target.value.split(':')[1];
-    if (Array.isArray(resData['reservoir_data']['unstructured'][colorProp.toLowerCase()][time])){  
-      var colorData = resData['reservoir_data']['unstructured'][colorProp.toLowerCase()][time]  // time-series property, eg pressure
+    let threshProp = document.getElementById('thresholdBySelector').options[thresholdBySelector.selectedIndex].text;
+    if (threshProp != 'None') {
+      if (Array.isArray(resData['reservoir_data']['unstructured'][colorProp.toLowerCase()][time])){  
+        var colorData = resData['reservoir_data']['unstructured'][colorProp.toLowerCase()][time]  // time-series property, eg pressure
+      }
+      else {
+        var colorData = resData['reservoir_data']['unstructured'][colorProp.toLowerCase()] // static property, eg porosity
+      }
+  
+      var newColorData = [];
+      for (let i of threshDataIdx) {
+        newColorData.push(colorData[i]);
+      }
+      innerPolys.getCellData().setScalars(
+        vtkDataArray.newInstance({name: colorProp, values: newColorData})
+      )
     }
+
+    //Otherwise, get color data array for outer mesh
     else {
-      var colorData = resData['reservoir_data']['unstructured'][colorProp.toLowerCase()] // static property, eg porosity
+      let cell_data = source.getCellData();
+      if (Array.isArray(resData['reservoir_data']['structured'][colorProp.toLowerCase()][time])){ 
+        let colorData = cell_data.getArrayByName(colorProp);
+        colorData.setData(resData['reservoir_data']['structured'][colorProp.toLowerCase()][time]);
+      }
+  
+      let dMax = resData['reservoir_data']['structured']['dataRanges'][colorProp]['max']
+      let dMin = resData['reservoir_data']['structured']['dataRanges'][colorProp]['min']
+  
+      const preset = vtkColorMaps.getPresetByName(presetSelector.value);
+      lookupTable.applyColorMap(preset);
+      lookupTable.setMappingRange(dMin, dMax);
+      lookupTable.updateRange();
     }
-    
-    var newColorData = [];
-    for (let i of threshDataIdx) {
-      newColorData.push(colorData[i]);
-    }
-    innerPolys.getCellData().setScalars(
-      vtkDataArray.newInstance({name: colorProp, values: newColorData})
-    )
 
     updateColorBy(e);
 
@@ -1094,7 +1117,7 @@ function load(container, options) {
 
     // set the ranges
     var x = d3.scaleLinear().range([0, 800]);
-    var y = d3.scaleLinear().range([400, 0]);
+    var y = d3.scaleLinear().range([600, 0]);
     // Scale the range of the data
     x.domain([0, pMax.length]);
     y.domain([d3.min(pMin), d3.max(pMax)]);
@@ -1124,7 +1147,7 @@ function load(container, options) {
     // Add X axis
     plot.append("g")
       .attr('id', 'ensemble-xaxis')
-      .attr("transform", "translate(0,400)")
+      .attr("transform", "translate(0,600)")
       .call(d3.axisBottom(x));
     // Add Y axis
     plot.append("g")
@@ -1188,10 +1211,10 @@ function load(container, options) {
       .attr("x1", 0)
       .attr("y1", 0)
       .attr("x2", 0)
-      .attr("y2", 400)
+      .attr("y2", 600)
     
     x = d3.scaleLinear().range([0, 50]);
-    y = d3.scaleLinear().range([400, 0]);
+    y = d3.scaleLinear().range([600, 0]);
     x.domain([0, countsMax]);
     y.domain([d3.min(bins), d3.max(bins)]);
 
