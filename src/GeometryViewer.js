@@ -23,19 +23,30 @@ let ScalarMode = vtk.Rendering.Core.vtkMapper.ScalarMode;
 
 let lookupTable = vtkColorTransferFunction.newInstance();
 let vtpReader = vtkXMLPolyDataReader.newInstance();
+
 let actor = vtkActor.newInstance();
 let actor_inside = vtkActor.newInstance();
 let source;
 let source_inside;
+let mapper;
+let mapper_inside;
 
 let autoInit = true;
 let background = [0, 0, 0];
 let renderWindow;
 let renderer;
-let mapper;
 let presetSelector;
 
+let time;
 let resData;
+let violinData;
+let violinCrop = false;
+let outlierLow;
+let outlierHigh;
+let threshIdx;
+
+let innerPolys;
+let threshDataIdx;
 
 let files;
 
@@ -216,9 +227,14 @@ function setSelectors() {
   highT.setAttribute('placeholder', 'Upper Threshold');
 
   let submit = document.createElement('input');
+  submit.setAttribute('id', 'thresh-button');
   submit.setAttribute('type', 'button');
-  submit.setAttribute('onclick', 'onSubmit()');
   submit.setAttribute('value', 'Apply');
+  submit.addEventListener('click', function() {
+    onSubmit();
+    let binRange = updateViolin(threshIdx, violinCrop);
+    updateEnsemble(binRange, threshIdx);
+  })
 
   // Append to container to continue to next flex box line
   function breakLine() {
@@ -268,16 +284,14 @@ function setSelectors() {
 
 }
 
-function onSubmit(e) {
+function onSubmit() {
   let time = document.getElementById('timeSelector').value;
   let lowT = document.getElementById('lowT').value;
   let highT = document.getElementById('highT').value;
-
-  loadTimeFile(time, lowT, highT);
-  
+  threshIdx = loadTimeFile(time, lowT, highT);
 }
 
-function updateEnsemble(t, binRange, threshIdx=[]) {
+function updateEnsemble(binRange, threshIdx=[]) {
   let pMax = resData['reservoir_data']['time_dataRanges']['PRESSURE']['max'];
   let pMin = resData['reservoir_data']['time_dataRanges']['PRESSURE']['min'];
 
@@ -324,48 +338,49 @@ function updateEnsemble(t, binRange, threshIdx=[]) {
     .call(d3.axisLeft(y));
 }
 
-function updateViolin(t, threshIdx=[]) {
+// Update the violin plot
+function updateViolin(threshIdx=[], crop) {
   var pressure_ensemble = d3.select('#pressure-ensemble');
-  // var sgas_ensemble = d3.select('#sgas-ensemble');
+  pressure_ensemble.select('#pressure-violin').remove();
+
   var x = d3.scaleLinear().range([0, 800]);
   x.domain([0, 64]);
 
-  pressure_ensemble.select('#pressure-violin').remove();
-  // Make a violin plot of pressure data at a single time step
-  let data = resData['reservoir_data']['pressure_violin'][t];
-
+  let data = resData['reservoir_data']['pressure_violin'][time];
   let newData = [];
   let bins = Object.values(data);
 
   function getVDat(cell) {
-    for (let bin of data[cell]) {
-      if (typeof bin === 'string') {
-        let d = bin.split('*');
-        if (d[0] in newData) {
-          newData[d[0]] += parseInt(d[1])
+    if (cell in data) {
+      for (let bin of data[cell]) {
+        if (typeof bin === 'string') {
+          let d = bin.split('*');
+          if (d[0] in newData) {
+            newData[d[0]] += parseInt(d[1])
+          }
+          else {
+            newData[d[0]] = parseInt(d[1])
+          }
         }
         else {
-          newData[d[0]] = parseInt(d[1])
-        }
-      }
-      else {
-        if (bin in newData) {
-          newData[bin] += 1
-        }
-        else {
-          newData[bin] = 1
+          if (bin in newData) {
+            newData[bin] += 1
+          }
+          else {
+            newData[bin] = 1
+          }
         }
       }
     }
   }
 
-  for (let cell in data) {
-    if (threshIdx.length > 0) {
-      if (threshIdx.includes(parseInt(cell))) {
-        getVDat(cell);
-      } 
+  if (threshIdx.length > 0) {
+    for (let cell of threshIdx) {
+      getVDat(cell.toString());
     }
-    else {
+  }
+  else {
+    for (let cell in data) {
       getVDat(cell);
     }
   }
@@ -377,56 +392,61 @@ function updateViolin(t, threshIdx=[]) {
   let minBins = d3.min(bins);
   let maxBins = d3.max(bins);
 
-  // TODO detect outliers
-  newData = [];
+  violinData = []; 
+  let allBins = [];
   for (let i = 0; i < bins.length; i++) {
-    if (bins[i] < 100000) { //TODO hardcoded
-      newData.push({"bin": bins[i], "count": counts[i]});
-    }
+    violinData.push({"bin": bins[i], "count": counts[i]});
+    if (crop) allBins.push(...Array(counts[i]).fill(bins[i]));
+  }
+
+  if (crop) {
+    let q1 = d3.quantile(allBins, .25);
+    let q3 = d3.quantile(allBins, .75);
+    let iqr = q3 - q1;
+    let mult = document.getElementById('iqr').value;
+    outlierLow = q1 - mult * iqr;
+    outlierHigh = q3 + mult * iqr;
   }
 
   var violin = pressure_ensemble.append('g')
     .attr('id', 'pressure-violin')
-    .attr("transform", "translate(" + x(t) + ", 0)")
+    .attr("transform", "translate(" + x(time) + ", 0)")
   
   x = d3.scaleLinear().range([0, 150]);
   y = d3.scaleLinear().range([400, 0]);
   x.domain([0, countsMax]);
-  y.domain([minBins, maxBins]); 
+  y.domain(crop ? [outlierLow, outlierHigh] : [minBins, maxBins]); 
 
   violin.append("path")
-    .datum(newData)
+    .datum(violinData)
     .style("stroke", "#0073e6")
     .style("fill", "none")
     .attr("d", d3.line()
                   .curve(d3.curveBasis)
                   .x(function(d,i) { return x(d.count); })
-                  .y(function(d,i) { return y(d.bin); })
-              );
+                  .y(function(d,i) { return y(d.bin); }));
 
   x.range([0, -150]);
   violin.append("path")
-  .datum(newData)
-  .style("stroke", "#0073e6")
-  .style("fill", "none")
-  .attr("d", d3.line()
+    .datum(violinData)
+    .style("stroke", "#0073e6")
+    .style("fill", "none")
+    .attr("d", d3.line()
                 .curve(d3.curveBasis)
                 .x(function(d,i) { return x(d.count); })
-                .y(function(d,i) { return y(d.bin); })
-            );
+                .y(function(d,i) { return y(d.bin); }));
 
   violin.append("line")
-  .style("stroke", "#ff4d4d")
-  .attr('id', 'time-line-p')
-  .attr("x1", 0)
-  .attr("y1", 0)
-  .attr("x2", 0)
-  .attr("y2", 400)
+    .style("stroke", "#ff4d4d")
+    .attr('id', 'time-line-p')
+    .attr("x1", 0)
+    .attr("y1", 0)
+    .attr("x2", 0)
+    .attr("y2", 400)
 
-  return [minBins, maxBins]
+  return crop ? [outlierLow, outlierHigh] : [minBins, maxBins]
 }
 
-// This 
 function createPipeline(fileName, fileContents) {
   // // Create UI
   setSelectors();
@@ -434,16 +454,24 @@ function createPipeline(fileName, fileContents) {
 
   // VTK pipeline
   vtpReader.parseAsArrayBuffer(fileContents);
-
   source = vtpReader.getOutputData(0);
   source.buildCells();
 
+  // Color mapper for the outer mesh
   mapper = vtkMapper.newInstance({
     interpolateScalarsBeforeMapping: false,
     useLookupTableScalarRange: true,
     lookupTable,
     scalarVisibility: false,
   });
+  // Color mapper for the inner mesh
+  mapper_inside = vtkMapper.newInstance({
+    interpolateScalarsBeforeMapping: false,
+    useLookupTableScalarRange: true,
+    lookupTable,
+    scalarVisibility: false,
+  });
+
   const scalars = source.getPointData().getScalars();
   const dataRange = [].concat(scalars ? scalars.getRange() : [0, 1]);
   let activeArray = vtkDataArray;
@@ -496,7 +524,7 @@ function createPipeline(fileName, fileContents) {
   // --------------------------------------------------------------------
 
   function updateTime(event) {
-    let t = event.target.value.toString();
+    time = event.target.value.toString();
 
     // Update histograms of time-dependent properties
     let uData = resData['reservoir_data']['unstructured'];
@@ -510,7 +538,7 @@ function createPipeline(fileName, fileContents) {
           let hist = document.getElementById(p);
           hist.remove();
           let c = d3.select('#data-viewer');
-          let d = uData[p][t]
+          let d = uData[p][time]
           makeHisto(c, d, 400 + 200 * offset, p);
           offset += 1;
         }
@@ -519,13 +547,12 @@ function createPipeline(fileName, fileContents) {
 
     let lowT = document.getElementById('lowT').value;
     let highT = document.getElementById('highT').value;
-    let threshIdx = loadTimeFile(event.target.value, lowT, highT);
+    threshIdx = loadTimeFile(event.target.value, lowT, highT);
 
-    let binRange = updateViolin(t, threshIdx);
-    updateEnsemble(t, binRange, threshIdx);
+    let binRange = updateViolin(threshIdx, violinCrop);
+    updateEnsemble(binRange, threshIdx);
         
     renderWindow.render();
-
   }
 
   timeSelector.addEventListener('input', updateTime);
@@ -534,7 +561,7 @@ function createPipeline(fileName, fileContents) {
   // ColorBy handling
   // --------------------------------------------------------------------
 
-  const colorByOptions = [{ value: ':', label: 'Solid color' }].concat(
+  const colorByOptions = [{ value: ':', label: 'None' }].concat(
     source
       .getPointData()
       .getArrays()
@@ -561,23 +588,32 @@ function createPipeline(fileName, fileContents) {
 
 // --------------------------------------------------------------------
   // Threshold Options
-  // --------------------------------------------------------------------
+  // ------------------------------------------------------------------
   thresholdBySelector.innerHTML = colorByOptions
-  .map(
-    ({ label, value }) =>
-      `<option value="${value}" ${
-        field === value ? 'selected="selected"' : ''
-      }>${label}</option>`
-  )
-  .join('');
+    .map(
+      ({ label, value }) =>
+        `<option value="${value}" ${
+          field === value ? 'selected="selected"' : ''
+        }>${label}</option>`
+    )
+    .join('');
 
   // Chooses which property is displayed on the grid
   // This currently is a performance bottleneck
   function updateColorBy(event) {
-    // Remove the inside actor if it is present, only show outer skin
-    renderer.removeActor(actor_inside);
-    actor.getProperty().setOpacity(1);
-    document.getElementById('lowT').value = '';  // Get rid of 
+
+    // // Remove the inside actor if it is present, only show outer skin
+    // renderer.removeActor(actor_inside);
+    // actor.getProperty().setOpacity(1);
+    // document.getElementById('lowT').value = '';
+
+    // Check if a threshold is active
+    if (document.getElementById('thresholdBySelector').value == 'None') {
+      var currentMapper = mapper;
+    }
+    else {
+      var currentMapper = mapper_inside;
+    }
 
     const [location, colorByArrayName] = event.target.value.split(':');
     const interpolateScalarsBeforeMapping = location === 'PointData';
@@ -585,7 +621,7 @@ function createPipeline(fileName, fileContents) {
     let scalarMode = ScalarMode.DEFAULT;
     const scalarVisibility = location.length > 0;
     if (scalarVisibility) {
-      const newArray = source[`get${location}`]().getArrayByName(
+      const newArray = source_inside[`get${location}`]().getArrayByName(
         colorByArrayName
       );
       activeArray = newArray;
@@ -601,8 +637,8 @@ function createPipeline(fileName, fileContents) {
       const numberOfComponents = activeArray.getNumberOfComponents();
       if (numberOfComponents > 1) {
         // always start on magnitude setting
-        if (mapper.getLookupTable()) {
-          const lut = mapper.getLookupTable();
+        if (currentMapper.getLookupTable()) {
+          const lut = currentMapper.getLookupTable();
           lut.setVectorModeToMagnitude();
         }
         componentSelector.style.display = 'block';
@@ -619,7 +655,7 @@ function createPipeline(fileName, fileContents) {
     } else {
       componentSelector.style.display = 'none';
     }
-    mapper.set({
+    currentMapper.set({
       colorByArrayName,
       colorMode,
       interpolateScalarsBeforeMapping,
@@ -629,30 +665,48 @@ function createPipeline(fileName, fileContents) {
     applyPreset();
   }
 
-  // thresholdBySelector.addEventListener('change', updateColorBy);
-  // updateColorBy({ target: thresholdBySelector });
+  colorBySelector.addEventListener('change', function(e) {
 
-  colorBySelector.addEventListener('change', updateColorBy);
+    // If threshold is active, get color data array
+    // We already have the thresholded indices!
+    let colorProp = e.target.value.split(':')[1];
+    if (Array.isArray(resData['reservoir_data']['unstructured'][colorProp.toLowerCase()][time])){  
+      var colorData = resData['reservoir_data']['unstructured'][colorProp.toLowerCase()][time]  // time-series property, eg pressure
+    }
+    else {
+      var colorData = resData['reservoir_data']['unstructured'][colorProp.toLowerCase()] // static property, eg porosity
+    }
+    
+    var newColorData = [];
+    for (let i of threshDataIdx) {
+      newColorData.push(colorData[i]);
+    }
+    innerPolys.getCellData().setScalars(
+      vtkDataArray.newInstance({name: colorProp, values: newColorData})
+    )
+
+    updateColorBy(e);
+
+  });
+
   updateColorBy({ target: colorBySelector });
 
-  function updateColorByComponent(event) {
-    if (mapper.getLookupTable()) {
-      const lut = mapper.getLookupTable();
-      if (event.target.value === -1) {
-        lut.setVectorModeToMagnitude();
-      } else {
-        lut.setVectorModeToComponent();
-        lut.setVectorComponent(Number(event.target.value));
-        const newDataRange = activeArray.getRange(Number(event.target.value));
-        dataRange[0] = newDataRange[0];
-        dataRange[1] = newDataRange[1];
-        lookupTable.setMappingRange(dataRange[0], dataRange[1]);
-        lut.updateRange();
-      }
-      renderWindow.render();
-    }
-  }
-  componentSelector.addEventListener('change', updateColorByComponent);
+  // function updateColorByComponent(event) {
+  //   if (mapper.getLookupTable()) {
+  //     const lut = mapper.getLookupTable();
+  //     if (event.target.value === -1) {
+  //       lut.setVectorModeToMagnitude();
+  //     } else {
+  //       lut.setVectorModeToComponent();
+  //       lut.setVectorComponent(Number(event.target.value));
+  //       const newDataRange = activeArray.getRange(Number(event.target.value));
+  //       lookupTable.setMappingRange(newDataRange[0], newDataRange[1]);
+  //       lut.updateRange();
+  //     }
+  //     renderWindow.render();
+  //   }
+  // }
+  // componentSelector.addEventListener('change', updateColorByComponent);
 
   // --------------------------------------------------------------------
   // Pipeline handling
@@ -765,10 +819,16 @@ function loadFile(file, nfiles) {
 
 function loadTimeFile(time, lowThresh, highThresh) {
   let timeFiles = ["PRESSURE", "SGAS", "PRESSURE_VAR", "SGAS_VAR"];
-  let currProp = colorBySelector.options[colorBySelector.selectedIndex].text;
+  let colorProp = colorBySelector.options[colorBySelector.selectedIndex].text;
+  let threshProp = thresholdBySelector.options[thresholdBySelector.selectedIndex].text;
   let threshIdx = [];
+  let showColor = false;
 
-  // Update the threholded inside
+  if (colorProp != threshProp && colorProp != 'None') {
+    showColor = true;
+  }
+
+  // Threshold interior
   if (lowThresh.length > 0 || highThresh.length > 0) {
     let points = source_inside.getPoints();
     let polys = source_inside.getPolys();
@@ -776,40 +836,54 @@ function loadTimeFile(time, lowThresh, highThresh) {
     let points_data = points.getData();
     let cells_loc_data = source_inside.getCells().getLocationArray();
   
-    let thresholdBy = currProp;
-    let newCellData = [];
-    let cellDataIdx = [];
+    let newThreshData = [];
+    threshDataIdx = [];
   
     // Get thresholded cell data for new array
-    if (Array.isArray(resData['reservoir_data']['unstructured'][thresholdBy.toLowerCase()][time])){  
-      var data = resData['reservoir_data']['unstructured'][thresholdBy.toLowerCase()][time]  // time-series property, eg pressure
+    if (Array.isArray(resData['reservoir_data']['unstructured'][threshProp.toLowerCase()][time])){  
+      var threshData = resData['reservoir_data']['unstructured'][threshProp.toLowerCase()][time]  // time-series property, eg pressure
     }
     else {
-      var data = resData['reservoir_data']['unstructured'][thresholdBy.toLowerCase()] // static property, eg porosity
+      var threshData = resData['reservoir_data']['unstructured'][threshProp.toLowerCase()] // static property, eg porosity
     }
 
-    for (let i = 0; i < data.length; i++) {
+    // If 'Color by' prop is different than threshold prop, get color prop data
+    // Get thresholded cell data for new array
+    if (showColor) {
+      if (Array.isArray(resData['reservoir_data']['unstructured'][colorProp.toLowerCase()][time])){  
+        var colorData = resData['reservoir_data']['unstructured'][colorProp.toLowerCase()][time]  // time-series property, eg pressure
+      }
+      else {
+        var colorData = resData['reservoir_data']['unstructured'][colorProp.toLowerCase()] // static property, eg porosity
+      }
+      var newColorData = [];
+    }
+
+    // Grab data who meets threshold criteria
+    for (let i = 0; i < threshData.length; i++) {
       if (lowThresh.length > 0 && highThresh.length > 0) {
-        if (data[i] > lowThresh && data[i] < highThresh) {  
-          newCellData.push(data[i]);
-          cellDataIdx.push(i);
+        if (threshData[i] > lowThresh && threshData[i] < highThresh) {  
+          newThreshData.push(threshData[i]);
+          if (showColor) newColorData.push(colorData[i]);
+          threshDataIdx.push(i);
         }
       }
       else if (lowThresh.length > 0) {
-        if (data[i] > lowThresh) {  
-          newCellData.push(data[i]);
-          cellDataIdx.push(i);
+        if (threshData[i] > lowThresh) {  
+          newThreshData.push(threshData[i]);
+          if (showColor) newColorData.push(colorData[i]);
+          threshDataIdx.push(i);
         }
       }
       else if (highThresh.length > 0) {
-        if (data[i] < highThresh) {  
-          newCellData.push(data[i]);
-          cellDataIdx.push(i);
+        if (threshData[i] < highThresh) {  
+          newThreshData.push(threshData[i]);
+          if (showColor) newColorData.push(colorData[i]);
+          threshDataIdx.push(i);
         }
       }
     }
-
-    for (let x of cellDataIdx) {
+    for (let x of threshDataIdx) {
       if (x % 6 == 0) {
         threshIdx.push(x / 6);
       }
@@ -819,8 +893,8 @@ function loadTimeFile(time, lowThresh, highThresh) {
     let newPolysData= [];
     let newPointsData = [];
     let currPolyPtr = 0;
-    for (let i = 0; i < cellDataIdx.length; i++) {
-      let polys_idx = cells_loc_data[0][cellDataIdx[i]];
+    for (let i = 0; i < threshDataIdx.length; i++) {
+      let polys_idx = cells_loc_data[0][threshDataIdx[i]];
       let pd = polys_data.slice(polys_idx, polys_idx + 5);
       let npd = [pd[0]];
       for (let k = currPolyPtr; k < currPolyPtr + 4; k++) {
@@ -828,57 +902,59 @@ function loadTimeFile(time, lowThresh, highThresh) {
       }
       currPolyPtr += 4;
       newPolysData.push(...npd);
-  
       for (let j = 1; j < pd.length; j++) {
         let poly_ptr = pd[j] * 3;
         let poly_pts = points_data.slice(poly_ptr, poly_ptr + 3);
         newPointsData.push(...poly_pts);
       }
     }
-  
-    let newPolys = vtk.Common.DataModel.vtkPolyData.newInstance();
-  
-    newPolys.getCellData().setScalars(
-      vtkDataArray.newInstance({name: currProp, values: newCellData})
+
+    innerPolys = vtk.Common.DataModel.vtkPolyData.newInstance();
+    innerPolys.getCellData().setScalars(
+      vtkDataArray.newInstance({name: threshProp, values: newThreshData})
     )
-    newPolys.getPoints().setData(newPointsData);
-    newPolys.getPolys().setData(newPolysData);
+    if (showColor) {
+      innerPolys.getCellData().setScalars(
+        vtkDataArray.newInstance({name: colorProp, values: newColorData})
+      )
+
+      let dMax = resData['reservoir_data']['structured']['dataRanges'][colorProp]['max']
+      let dMin = resData['reservoir_data']['structured']['dataRanges'][colorProp]['min']
+    
+      const preset = vtkColorMaps.getPresetByName(presetSelector.value);
+      lookupTable.applyColorMap(preset);
+      lookupTable.setMappingRange(dMin, dMax);
+      lookupTable.updateRange();  
+    }
+
+    innerPolys.getPoints().setData(newPointsData);
+    innerPolys.getPolys().setData(newPolysData);
   
-    const mapper2 = vtkMapper.newInstance();
-    actor_inside.setMapper(mapper2);
+    //mapper_inside = vtkMapper.newInstance();
+    actor_inside.setMapper(mapper_inside);
     actor.getProperty().setOpacity(0.05);
-    mapper2.setInputData(newPolys);
-  
+    mapper_inside.setInputData(innerPolys);
     actor_inside.setScale(1, 1, 5);
     renderer.addActor(actor_inside);
-  
-    let dMax = resData['reservoir_data']['structured']['dataRanges'][currProp]['max']
-    let dMin = resData['reservoir_data']['structured']['dataRanges'][currProp]['min']
-  
-    const dataRange = [dMin, dMax]
-    const preset = vtkColorMaps.getPresetByName(presetSelector.value);
-    lookupTable.applyColorMap(preset);
-    lookupTable.setMappingRange(dMin, dMax);
-    lookupTable.updateRange();
   }
 
   // Update the skin only
   else {
     let cell_data = source.getCellData();
-
-    if (timeFiles.includes(currProp)) {
-      let data = cell_data.getArrayByName(currProp);
-      data.setData(resData['reservoir_data']['structured'][currProp.toLowerCase()][time]);
+    if (timeFiles.includes(threshProp)) {
+      let threshData = cell_data.getArrayByName(threshProp);
+      threshData.setData(resData['reservoir_data']['structured'][threshProp.toLowerCase()][time]);
     }
 
-    let dMax = resData['reservoir_data']['structured']['dataRanges'][currProp]['max']
-    let dMin = resData['reservoir_data']['structured']['dataRanges'][currProp]['min']
-
-    const dataRange = [dMin, dMax]
-    const preset = vtkColorMaps.getPresetByName(presetSelector.value);
-    lookupTable.applyColorMap(preset);
-    lookupTable.setMappingRange(dataRange[0], dataRange[1]);
-    lookupTable.updateRange();
+    if (showColor) {
+      let dMax = resData['reservoir_data']['structured']['dataRanges'][colorProp]['max']
+      let dMin = resData['reservoir_data']['structured']['dataRanges'][colorProp]['min']
+  
+      const preset = vtkColorMaps.getPresetByName(presetSelector.value);
+      lookupTable.applyColorMap(preset);
+      lookupTable.setMappingRange(dMin, dMax);
+      lookupTable.updateRange();
+    }
   }
 
   renderWindow.render();
@@ -943,11 +1019,15 @@ function load(container, options) {
   // D3 Data Loading
   loadData().then(function(data1) {
     resData = data1;
-    var canvas = d3.select('body').append('svg')
-      .attr('id', 'data-viewer')
-      .style('width', '50%')
-      .style('height', '100%')
-      .style('float', 'right')
+    var pc = d3.select('body').append('g')
+    .style('width', '50%')
+    .style('height', '100%')
+    .style('float', 'right')
+
+    var canvas = pc.append('svg')
+    .attr('id', 'data-viewer')
+    .style('width', '100%')
+    .style('height', '25%')
       .style('background-color', 'gray')
 
     makeHisto(canvas, data1['reservoir_data']['unstructured']['poro'], 0, 'poro');
@@ -961,10 +1041,57 @@ function load(container, options) {
     let sMax = resData['reservoir_data']['time_dataRanges']['SGAS']['max'];
     let sMin = resData['reservoir_data']['time_dataRanges']['SGAS']['min'];
 
-    // PRESSURE range plot
-    var plot = canvas.append('g')
-      .attr('id', 'pressure-ensemble')
-      .attr('transform', 'translate(60, 270)');
+    let ensembleControls = pc.append('div')
+    .style('width', '100%')
+    .style('height', '4%')
+    .attr('id', 'ensemble-controls');
+
+    ensembleControls.append('text')
+      .text('Ensemble data: ');
+
+    let ensembleOptions = ["PRESSURE", "SGAS"];
+    let dropdown = ensembleControls.append('select');
+    let options = dropdown.selectAll('option').data(ensembleOptions).enter().append('option');
+    options.text(function(d) {
+      return d;
+    })
+
+    ensembleControls.append('text')
+      .text('Interquartile range multiplier: ');
+
+    ensembleControls.append('input') 
+      .attr('id', 'iqr')   
+      .attr('type', 'text')
+      .attr('value', 1.5);
+
+    ensembleControls.append('input')
+      .attr('type', 'button')
+      .attr('id', 'iqr-button-crop')
+      .attr('value', 'Crop plot');
+
+    ensembleControls.append('input')
+    .attr('type', 'button')
+    .attr('id', 'iqr-button-outliers')
+    .attr('value', 'Show outliers');
+
+    document.getElementById('iqr-button-crop').addEventListener('click', function() {
+      violinCrop = !violinCrop;
+      d3.select('#iqr-button-crop').attr('value', function() {return violinCrop ? 'Uncrop plot' : 'Crop plot'});
+      let binRange = updateViolin(threshIdx, violinCrop);
+      updateEnsemble(binRange, threshIdx);
+    })
+
+
+  // PRESSURE range plot
+  var plot = pc.append('svg')      
+    .style('width', '100%')
+    .style('height', '70%')
+    .style('background-color', 'gray')
+    .append('g')
+    .attr('id', 'pressure-ensemble')
+    .attr('transform', 'translate(60, 20)');
+
+
     // set the ranges
     var x = d3.scaleLinear().range([0, 800]);
     var y = d3.scaleLinear().range([400, 0]);
