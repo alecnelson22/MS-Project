@@ -107,7 +107,6 @@ class Violin {
     .curve(d3.curveBasis)
     .x(function(d,i) { return that.xScale(d.count); })
     .y(function(d,i) { return that.yScale(d.bin); });
-
     this.path();
     this.xScale.range([0, -150]); 
     this.path();
@@ -167,20 +166,18 @@ class Violin {
     let minBins = d3.min(bins);
     let maxBins = d3.max(bins);
   
-    // violinData = []; 
     this.data = [];
     let allBins = [];
     for (let i = 0; i < bins.length; i++) {
-      // violinData.push({"bin": bins[i], "count": counts[i]});
       this.data.push({"bin": bins[i], "count": counts[i]});
   
       if (time != 0) {
-        if (violin.crop) allBins.push(...Array(counts[i]).fill(bins[i]));
+        if (this.crop) allBins.push(...Array(counts[i]).fill(bins[i]));
       }
     }
   
     // Crop plot (outliers) by interquartile range method
-    if (violin.crop) {
+    if (this.crop) {
       let q1 = d3.quantile(allBins, .25);
       let q3 = d3.quantile(allBins, .75);
       let iqr = q3 - q1;
@@ -196,28 +193,14 @@ class Violin {
     this.xScale = d3.scaleLinear().range([0, 150]);
     this.yScale = d3.scaleLinear().range([600, 0]);
     this.xScale.domain([0, countsMax]);
-    this.yScale.domain(violin.crop ? [outlierLow, outlierHigh] : [minBins, maxBins]); 
+    this.yScale.domain(this.crop ? [this.outlierLow,  this.outlierHigh] : [minBins, maxBins]); 
   
-    // let violinLine = d3.line()
-    //   .curve(d3.curveBasis)
-    //   .x(function(d,i) { return x(d.count); })
-    //   .y(function(d,i) { return y(d.bin); });
-
-
-  
+    // Redraw plot
     this.drawBorder();
-    this.drawPoints(this.svg, this.data, this.xScale, this.yScale);
+    this.drawPoints();
     this.timeLine();
   
-    // violin.append("line")
-    //   .style("stroke", "#ff4d4d")
-    //   .attr('id', 'time-line-p')
-    //   .attr("x1", 0)
-    //   .attr("y1", 0)
-    //   .attr("x2", 0)
-    //   .attr("y2", 600)
-  
-    return violin.crop ? [outlierLow, outlierHigh] : [minBins, maxBins]
+    return this.crop ? [this.outlierLow, this.outlierHigh] : [minBins, maxBins]
   }
 }
 
@@ -589,142 +572,6 @@ function updateEnsemble(binRange, threshIdx=[]) {
     .call(d3.axisLeft(y));
 }
 
-// // Update the violin plot
-// function updateViolin(threshIdx=[], crop) {
-//   var pressure_ensemble = d3.select('#pressure-ensemble');
-//   pressure_ensemble.select('#pressure-violin').remove();
-
-//   var x = d3.scaleLinear().range([0, 800]);
-//   x.domain([0, 64]);
-
-//   let data = resData['reservoir_data']['pressure_violin'][time];
-//   let newData = [];
-//   let bins = Object.values(data);
-
-//   function getVDat(cell) {
-//     if (cell in data) {
-//       for (let bin of data[cell]) {
-//         if (typeof bin === 'string') {
-//           let d = bin.split('*');
-//           if (d[0] in newData) {
-//             newData[d[0]] += parseInt(d[1])
-//           }
-//           else {
-//             newData[d[0]] = parseInt(d[1])
-//           }
-//         }
-//         else {
-//           if (bin in newData) {
-//             newData[bin] += 1
-//           }
-//           else {
-//             newData[bin] = 1
-//           }
-//         }
-//       }
-//     }
-//   }
-
-//   if (threshIdx.length > 0) {
-//     for (let cell of threshIdx) {
-//       getVDat(cell.toString());
-//     }
-//   }
-//   else {
-//     for (let cell in data) {
-//       getVDat(cell);
-//     }
-//   }
-
-
-//   bins = Object.keys(newData).map(Number);
-//   let counts = Object.values(newData);
-//   let countsMax = d3.max(counts);
-//   let minBins = d3.min(bins);
-//   let maxBins = d3.max(bins);
-
-//   violinData = []; 
-//   let allBins = [];
-//   for (let i = 0; i < bins.length; i++) {
-//     violinData.push({"bin": bins[i], "count": counts[i]});
-
-//     if (time != 0) {
-//       if (crop) allBins.push(...Array(counts[i]).fill(bins[i]));
-//     }
-//   }
-
-//   // Crop plot (outliers) by interquartile range method
-//   if (crop) {
-//     let q1 = d3.quantile(allBins, .25);
-//     let q3 = d3.quantile(allBins, .75);
-//     let iqr = q3 - q1;
-//     let mult = document.getElementById('iqr').value;
-//     outlierLow = q1 - mult * iqr;
-//     outlierHigh = q3 + mult * iqr;
-//   }
-
-//   var violin = pressure_ensemble.append('g')
-//     .attr('id', 'pressure-violin')
-//     .attr("transform", "translate(" + x(time) + ", 0)")
-  
-//   x = d3.scaleLinear().range([0, 150]);
-//   y = d3.scaleLinear().range([600, 0]);
-//   x.domain([0, countsMax]);
-//   y.domain(crop ? [outlierLow, outlierHigh] : [minBins, maxBins]); 
-
-//   let violinLine = d3.line()
-//     .curve(d3.curveBasis)
-//     .x(function(d,i) { return x(d.count); })
-//     .y(function(d,i) { return y(d.bin); });
-
-//   violin.append("path")
-//     .datum(violinData)
-//     .style("stroke", "#0073e6")
-//     .style('stroke-width', '2')
-//     .style("fill", "none")
-//     .attr("d", violinLine);
-
-//   x.range([0, -150]);
-
-//   violin.append("path")
-//     .datum(violinData)
-//     .style("stroke", "#0073e6")
-//     .style('stroke-width', '2')
-//     .style("fill", "none")
-//     .attr("d", violinLine);
-
-//   drawViolinPoints(violin, violinData, x, y);
-
-//   // violin.append('g').selectAll("circle")
-//   // .data(violinData)
-//   // .enter().append("circle")
-//   // .style("stroke", "gray")
-//   // .style("fill", "black")
-//   // .attr("r", 2)
-//   // .attr("cx", function(d) {return x(d.count)})
-//   // .attr("cy", function(d) {return y(d.bin)});
-
-//   // x.range([0, 150]);
-  
-//   // violin.append('g').selectAll("circle")
-//   // .data(violinData)
-//   // .enter().append("circle")
-//   // .style("stroke", "gray")
-//   // .style("fill", "black")
-//   // .attr("r", 2)
-//   // .attr("cx", function(d) {return x(d.count)})
-//   // .attr("cy", function(d) {return y(d.bin)});
-
-//   violin.append("line")
-//     .style("stroke", "#ff4d4d")
-//     .attr('id', 'time-line-p')
-//     .attr("x1", 0)
-//     .attr("y1", 0)
-//     .attr("x2", 0)
-//     .attr("y2", 600)
-
-//   return crop ? [outlierLow, outlierHigh] : [minBins, maxBins]
-// }
 
 function createPipeline(fileName, fileContents) {
   // // Create UI
