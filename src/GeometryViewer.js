@@ -29,6 +29,14 @@ let source_inside;
 let mapper;
 let mapper_inside;
 
+let innerPolys;
+let threshDataIdx;
+
+let files;
+
+var global = {};
+global.pipeline = {};
+
 let autoInit = true;
 let background = [0, 0, 0];
 let renderWindow;
@@ -37,15 +45,11 @@ let presetSelector;
 
 let time;
 let resData;
-let violinData;
-let violinCrop = false;
-let outlierLow;
-let outlierHigh;
-let threshIdx;
+
+
+
 
 let violin;
-
-
 
 class Violin {
   constructor(data, svg, crop, xScale, yScale) {
@@ -57,6 +61,7 @@ class Violin {
     this.threshIdx;
     this.outlierLow;
     this.outlierHigh;
+    this.showPoints = false;
   }
 
   // Draw circles
@@ -65,8 +70,7 @@ class Violin {
     this.svg.append('g').selectAll("circle")
     .data(this.data)
     .enter().append("circle")
-    .style("stroke", "gray")
-    .style("fill", "black")
+    .attr('class', function() { return this.showPoints ? 'non_brushed' : 'hidden'})
     .attr("r", 2)
     .attr("cx", function(d) {return that.xScale(d.count)})
     .attr("cy", function(d) {return that.yScale(d.bin)});
@@ -93,11 +97,19 @@ class Violin {
     .attr("y2", 600)
   }
 
-    // Draw all points representing violin points
+  // Draw all points representing violin points
   drawPoints() {
     this.circles();
     this.xScale.range([0, 150]); 
     this.circles();
+  }
+
+  hidePts() {
+    this.svg.selectAll('circle').attr('class', 'hidden');
+  }
+
+  showPts() {
+    this.svg.selectAll('circle').attr('class', 'non_brushed');
   }
 
   // Draw violin border
@@ -203,15 +215,6 @@ class Violin {
     return this.crop ? [this.outlierLow, this.outlierHigh] : [minBins, maxBins]
   }
 }
-
-
-let innerPolys;
-let threshDataIdx;
-
-let files;
-
-var global = {};
-global.pipeline = {};
 
 // Process arguments from URL
 const userParams = vtkURLExtract.extractURLParameters();
@@ -1233,21 +1236,27 @@ function load(container, options) {
     .attr('value', 'Show points');
 
     document.getElementById('iqr-button-crop').addEventListener('click', function() {
-      //violinCrop = !violinCrop;
       violin.crop = !violin.crop;
       d3.select('#iqr-button-crop').attr('value', function() {return violin.crop ? 'Uncrop plot' : 'Crop plot'});
       let binRange = violin.update(this.threshIdx, this.crop);
-      //let binRange = updateViolin(threshIdx, violinCrop);
       updateEnsemble(binRange, violin.threshIdx);
     })
 
-    // document.getElementById('iqr-button-points').addEventListener('click', function() {
-    //   violinShowPoints = !violinShowPoints;
-    //   d3.select('#iqr-button-crop').attr('value', function() {return violinShowPoints ? 'Hide points' : 'Show points'});
+    document.getElementById('iqr-button-points').addEventListener('click', function() {
+      violin.showPoints = !violin.showPoints;
+      d3.select('#iqr-button-points').attr('value', function() {
+        if (violin.showPoints) {
+          violin.showPts();
+          return 'Hide points';
+        }
+        else {
+          violin.hidePts();
+          return 'Show points';
+        }
+      })
+    })
 
-    //   if (violinShowPoints) drawViolinPoints(
-  
-    // })
+
 
 
     // PRESSURE range plot
@@ -1273,10 +1282,11 @@ function load(container, options) {
       .attr('id', 'ensemble-min-max');
     drawAreaChart(x, y);
 
-    // // Add brush for selecting data subsets
-    // plot.call(d3.brush()
-    // .extent([[0,0], [800,600]]))
-    // .on("start brush end", brushed);;
+    // Add brush for selecting data subsets
+    plot.call(d3.brush()
+    .extent([[0,0], [800,600]]))
+    //.on("brush", highlightElements);
+    
 
     // Add X axis
     plot.append("g")
