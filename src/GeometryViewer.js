@@ -12,8 +12,6 @@ let vtkFPSMonitor = vtk.Interaction.UI.vtkFPSMonitor;
 let vtkDataSet = vtk.Common.DataModel.vtkDataSet;
 let vtkCylinderSource = vtk.Filters.Sources.vtkCylinderSource;
 
-let dd = 1;
-
 // Cell Picker
 let vtkCellPicker = vtk.Rendering.Core.vtkCellPicker;
 let vtkSphereSource = vtk.Filters.Sources
@@ -45,6 +43,185 @@ let outlierLow;
 let outlierHigh;
 let threshIdx;
 
+let violin;
+
+
+
+class Violin {
+  constructor(data, svg, crop, xScale, yScale) {
+    this.data = data;
+    this.svg = svg;
+    this.crop = crop;
+    this.xScale = xScale;
+    this.yScale = yScale;
+    this.threshIdx;
+    this.outlierLow;
+    this.outlierHigh;
+  }
+
+  // Draw circles
+  circles() {
+    let that = this;
+    this.svg.append('g').selectAll("circle")
+    .data(this.data)
+    .enter().append("circle")
+    .style("stroke", "gray")
+    .style("fill", "black")
+    .attr("r", 2)
+    .attr("cx", function(d) {return that.xScale(d.count)})
+    .attr("cy", function(d) {return that.yScale(d.bin)});
+  }
+
+  // Draw path
+  path() {
+    this.svg.append("path")
+    .datum(this.data)
+    .style("stroke", "#0073e6")
+    .style('stroke-width', '2')
+    .style("fill", "none")
+    .attr("d", this.line);
+  }
+
+  // Draw vertical time line
+  timeLine() {
+    this.svg.append("line")
+    .style("stroke", "#ff4d4d")
+    .attr('id', 'time-line-p')
+    .attr("x1", 0)
+    .attr("y1", 0)
+    .attr("x2", 0)
+    .attr("y2", 600)
+  }
+
+    // Draw all points representing violin points
+  drawPoints() {
+    this.circles();
+    this.xScale.range([0, 150]); 
+    this.circles();
+  }
+
+  // Draw violin border
+  drawBorder() {
+    let that = this;
+    this.line = d3.line()
+    .curve(d3.curveBasis)
+    .x(function(d,i) { return that.xScale(d.count); })
+    .y(function(d,i) { return that.yScale(d.bin); });
+
+    this.path();
+    this.xScale.range([0, -150]); 
+    this.path();
+  }
+  
+
+  update() {
+    var pressure_ensemble = d3.select('#pressure-ensemble');
+    pressure_ensemble.select('#pressure-violin').remove();
+  
+    this.xScale = d3.scaleLinear().range([0, 800]);
+    this.xScale.domain([0, 64]);
+  
+    let data = resData['reservoir_data']['pressure_violin'][time];
+    let newData = [];
+    let bins = Object.values(data);
+  
+    function getVDat(cell) {
+      if (cell in data) {
+        for (let bin of data[cell]) {
+          if (typeof bin === 'string') {
+            let d = bin.split('*');
+            if (d[0] in newData) {
+              newData[d[0]] += parseInt(d[1])
+            }
+            else {
+              newData[d[0]] = parseInt(d[1])
+            }
+          }
+          else {
+            if (bin in newData) {
+              newData[bin] += 1
+            }
+            else {
+              newData[bin] = 1
+            }
+          }
+        }
+      }
+    }
+  
+    if (this.threshIdx.length > 0) {
+      for (let cell of this.threshIdx) {
+        getVDat(cell.toString());
+      }
+    }
+    else {
+      for (let cell in data) {
+        getVDat(cell);
+      }
+    }
+  
+  
+    bins = Object.keys(newData).map(Number);
+    let counts = Object.values(newData);
+    let countsMax = d3.max(counts);
+    let minBins = d3.min(bins);
+    let maxBins = d3.max(bins);
+  
+    // violinData = []; 
+    this.data = [];
+    let allBins = [];
+    for (let i = 0; i < bins.length; i++) {
+      // violinData.push({"bin": bins[i], "count": counts[i]});
+      this.data.push({"bin": bins[i], "count": counts[i]});
+  
+      if (time != 0) {
+        if (violin.crop) allBins.push(...Array(counts[i]).fill(bins[i]));
+      }
+    }
+  
+    // Crop plot (outliers) by interquartile range method
+    if (violin.crop) {
+      let q1 = d3.quantile(allBins, .25);
+      let q3 = d3.quantile(allBins, .75);
+      let iqr = q3 - q1;
+      let mult = document.getElementById('iqr').value;
+      this.outlierLow = q1 - mult * iqr;
+      this.outlierHigh = q3 + mult * iqr;
+    }
+  
+    this.svg = pressure_ensemble.append('g')
+      .attr('id', 'pressure-violin')
+      .attr("transform", "translate(" + this.xScale(time) + ", 0)")
+    
+    this.xScale = d3.scaleLinear().range([0, 150]);
+    this.yScale = d3.scaleLinear().range([600, 0]);
+    this.xScale.domain([0, countsMax]);
+    this.yScale.domain(violin.crop ? [outlierLow, outlierHigh] : [minBins, maxBins]); 
+  
+    // let violinLine = d3.line()
+    //   .curve(d3.curveBasis)
+    //   .x(function(d,i) { return x(d.count); })
+    //   .y(function(d,i) { return y(d.bin); });
+
+
+  
+    this.drawBorder();
+    this.drawPoints(this.svg, this.data, this.xScale, this.yScale);
+    this.timeLine();
+  
+    // violin.append("line")
+    //   .style("stroke", "#ff4d4d")
+    //   .attr('id', 'time-line-p')
+    //   .attr("x1", 0)
+    //   .attr("y1", 0)
+    //   .attr("x2", 0)
+    //   .attr("y2", 600)
+  
+    return violin.crop ? [outlierLow, outlierHigh] : [minBins, maxBins]
+  }
+}
+
+
 let innerPolys;
 let threshDataIdx;
 
@@ -67,7 +244,7 @@ const selectorClass =
     : 'dark'
 
 // lut
-const lutName = userParams.lut || 'erdc_rainbow_bright';
+const lutName = userParams.lut || 'Cool to Warm';
 
 // field
 const field = userParams.field || '';
@@ -156,6 +333,74 @@ function createViewer(container) {
   }
 }
 
+function createColorLegend(
+  offsetX,
+  offsetY,
+  preset,
+  min = 0,
+  max = 1
+) {
+  const polydata = vtk({
+    vtkClass: 'vtkPolyData',
+    points: {
+      vtkClass: 'vtkPoints',
+      dataType: 'Float32Array',
+      numberOfComponents: 3,
+      values: [
+        offsetX,
+        offsetY,
+        0,
+        offsetX + 100,
+        offsetY,
+        0,
+        offsetX + 100,
+        offsetY + 400,
+        0,
+        offsetX,
+        offsetY + 400,
+        0,
+      ],
+    },
+    polys: {
+      vtkClass: 'vtkCellArray',
+      dataType: 'Uint16Array',
+      values: [4, 0, 1, 2, 3],
+    },
+    pointData: {
+      vtkClass: 'vtkDataSetAttributes',
+      activeScalars: 0,
+      arrays: [
+        {
+          data: {
+            vtkClass: 'vtkDataArray',
+            name: 'pointScalars',
+            dataType: 'Float32Array',
+            values: [min, min, max, max],
+          },
+        },
+      ],
+    },
+  });
+
+  const actor = vtkActor.newInstance();
+  const mapper = vtkMapper.newInstance({ interpolateScalarsBeforeMapping: true });
+  actor.setMapper(mapper);
+  mapper.setInputData(polydata);
+  actor.getProperty().set({ edgeVisibility: true, edgeColor: [1, 1, 1] });
+
+  if (preset) {
+    const preset = vtkColorMaps.getPresetByName(presetSelector.value);
+    lookupTable.applyColorMap(preset);
+    mapper.setLookupTable(lookupTable);
+    // lookupTable.setMappingRange(dataRange[0], dataRange[1]);
+    // lookupTable.updateRange();
+  }
+
+  return actor;
+}
+
+
+
 function setSelectors() {
   // Create UI
   presetSelector = document.createElement('select');
@@ -232,8 +477,9 @@ function setSelectors() {
   submit.setAttribute('value', 'Apply');
   submit.addEventListener('click', function() {
     onSubmit();
-    let binRange = updateViolin(threshIdx, violinCrop);
-    updateEnsemble(binRange, threshIdx);
+    let binRange = violin.update();
+    //let binRange = updateViolin(threshIdx, violinCrop);
+    updateEnsemble(binRange, violin.threshIdx);
   })
 
   // Append to container to continue to next flex box line
@@ -288,8 +534,29 @@ function onSubmit() {
   let time = document.getElementById('timeSelector').value;
   let lowT = document.getElementById('lowT').value;
   let highT = document.getElementById('highT').value;
-  threshIdx = loadTimeFile(time, lowT, highT);
+  violin.threshIdx = loadTimeFile(time, lowT, highT);
 }
+
+// Draws an area chart for pMax and pMin
+function drawAreaChart(xScale, yScale) {
+  let pMax = resData['reservoir_data']['time_dataRanges']['PRESSURE']['max'];
+  let pMin = resData['reservoir_data']['time_dataRanges']['PRESSURE']['min'];
+
+  // Add minmax area plot
+  var area = d3.area()
+  .curve(d3.curveBasis)
+  .x( function(d) { return xScale(d) } )
+  .y0( function(d) { return yScale(pMin[d]) } )
+  .y1(  function(d) { return yScale(pMax[d]) } );
+
+  d3.select('#ensemble-min-max').append("path")
+    .datum(d3.range(pMax.length))
+    .attr('d', area)
+    .style("stroke", "#0073e6")
+    .style("fill", "#0073e6")
+    .style('opacity', '.3');
+}
+
 
 function updateEnsemble(binRange, threshIdx=[]) {
   let pMax = resData['reservoir_data']['time_dataRanges']['PRESSURE']['max'];
@@ -298,31 +565,15 @@ function updateEnsemble(binRange, threshIdx=[]) {
   // set the ranges
   var x = d3.scaleLinear().range([0, 800]);
   var y = d3.scaleLinear().range([600, 0]);
-  // Scale the range of the data
   x.domain([0, pMax.length]); 
-  y.domain(binRange);  //TODO remove outliers (hardcoded)
+  y.domain(binRange); 
 
   // let plot = d3.select('#pressure-ensemble');
-  d3.select('#ensemble-max').selectAll('path').remove();
-  let maxPlot = d3.select('#ensemble-max').append("path")
-    .datum(pMax)
-    .style("stroke", "#0073e6")
-    .style("fill", "none")
-    .attr("d", d3.line()
-                  .curve(d3.curveBasis)
-                  .x(function(d,i) { return x(i); })
-                  .y(function(d) { return y(d); }));
+  //d3.select('#ensemble-max').selectAll('path').remove();
 
-  // Add the pMin path
-  d3.select('#ensemble-min').selectAll('path').remove();
-  let minPlot = d3.select('#ensemble-min').append('path')
-    .datum(pMin)
-    .style("stroke", "#0073e6")
-    .style("fill", "none")
-    .attr("d", d3.line()
-                  .curve(d3.curveBasis)
-                  .x(function(d,i) { return x(i); })
-                  .y(function(d) { return y(d); }));
+  // Update the area chart for pMin and pMax
+  d3.select('#ensemble-min-max').selectAll('path').remove();
+  drawAreaChart(x, y);
 
   let plot = d3.select('#pressure-ensemble');
   d3.select('#ensemble-xaxis').remove();
@@ -338,114 +589,142 @@ function updateEnsemble(binRange, threshIdx=[]) {
     .call(d3.axisLeft(y));
 }
 
-// Update the violin plot
-function updateViolin(threshIdx=[], crop) {
-  var pressure_ensemble = d3.select('#pressure-ensemble');
-  pressure_ensemble.select('#pressure-violin').remove();
+// // Update the violin plot
+// function updateViolin(threshIdx=[], crop) {
+//   var pressure_ensemble = d3.select('#pressure-ensemble');
+//   pressure_ensemble.select('#pressure-violin').remove();
 
-  var x = d3.scaleLinear().range([0, 800]);
-  x.domain([0, 64]);
+//   var x = d3.scaleLinear().range([0, 800]);
+//   x.domain([0, 64]);
 
-  let data = resData['reservoir_data']['pressure_violin'][time];
-  let newData = [];
-  let bins = Object.values(data);
+//   let data = resData['reservoir_data']['pressure_violin'][time];
+//   let newData = [];
+//   let bins = Object.values(data);
 
-  function getVDat(cell) {
-    if (cell in data) {
-      for (let bin of data[cell]) {
-        if (typeof bin === 'string') {
-          let d = bin.split('*');
-          if (d[0] in newData) {
-            newData[d[0]] += parseInt(d[1])
-          }
-          else {
-            newData[d[0]] = parseInt(d[1])
-          }
-        }
-        else {
-          if (bin in newData) {
-            newData[bin] += 1
-          }
-          else {
-            newData[bin] = 1
-          }
-        }
-      }
-    }
-  }
+//   function getVDat(cell) {
+//     if (cell in data) {
+//       for (let bin of data[cell]) {
+//         if (typeof bin === 'string') {
+//           let d = bin.split('*');
+//           if (d[0] in newData) {
+//             newData[d[0]] += parseInt(d[1])
+//           }
+//           else {
+//             newData[d[0]] = parseInt(d[1])
+//           }
+//         }
+//         else {
+//           if (bin in newData) {
+//             newData[bin] += 1
+//           }
+//           else {
+//             newData[bin] = 1
+//           }
+//         }
+//       }
+//     }
+//   }
 
-  if (threshIdx.length > 0) {
-    for (let cell of threshIdx) {
-      getVDat(cell.toString());
-    }
-  }
-  else {
-    for (let cell in data) {
-      getVDat(cell);
-    }
-  }
+//   if (threshIdx.length > 0) {
+//     for (let cell of threshIdx) {
+//       getVDat(cell.toString());
+//     }
+//   }
+//   else {
+//     for (let cell in data) {
+//       getVDat(cell);
+//     }
+//   }
 
 
-  bins = Object.keys(newData).map(Number);
-  let counts = Object.values(newData);
-  let countsMax = d3.max(counts);
-  let minBins = d3.min(bins);
-  let maxBins = d3.max(bins);
+//   bins = Object.keys(newData).map(Number);
+//   let counts = Object.values(newData);
+//   let countsMax = d3.max(counts);
+//   let minBins = d3.min(bins);
+//   let maxBins = d3.max(bins);
 
-  violinData = []; 
-  let allBins = [];
-  for (let i = 0; i < bins.length; i++) {
-    violinData.push({"bin": bins[i], "count": counts[i]});
-    if (crop) allBins.push(...Array(counts[i]).fill(bins[i]));
-  }
+//   violinData = []; 
+//   let allBins = [];
+//   for (let i = 0; i < bins.length; i++) {
+//     violinData.push({"bin": bins[i], "count": counts[i]});
 
-  if (crop) {
-    let q1 = d3.quantile(allBins, .25);
-    let q3 = d3.quantile(allBins, .75);
-    let iqr = q3 - q1;
-    let mult = document.getElementById('iqr').value;
-    outlierLow = q1 - mult * iqr;
-    outlierHigh = q3 + mult * iqr;
-  }
+//     if (time != 0) {
+//       if (crop) allBins.push(...Array(counts[i]).fill(bins[i]));
+//     }
+//   }
 
-  var violin = pressure_ensemble.append('g')
-    .attr('id', 'pressure-violin')
-    .attr("transform", "translate(" + x(time) + ", 0)")
+//   // Crop plot (outliers) by interquartile range method
+//   if (crop) {
+//     let q1 = d3.quantile(allBins, .25);
+//     let q3 = d3.quantile(allBins, .75);
+//     let iqr = q3 - q1;
+//     let mult = document.getElementById('iqr').value;
+//     outlierLow = q1 - mult * iqr;
+//     outlierHigh = q3 + mult * iqr;
+//   }
+
+//   var violin = pressure_ensemble.append('g')
+//     .attr('id', 'pressure-violin')
+//     .attr("transform", "translate(" + x(time) + ", 0)")
   
-  x = d3.scaleLinear().range([0, 150]);
-  y = d3.scaleLinear().range([600, 0]);
-  x.domain([0, countsMax]);
-  y.domain(crop ? [outlierLow, outlierHigh] : [minBins, maxBins]); 
+//   x = d3.scaleLinear().range([0, 150]);
+//   y = d3.scaleLinear().range([600, 0]);
+//   x.domain([0, countsMax]);
+//   y.domain(crop ? [outlierLow, outlierHigh] : [minBins, maxBins]); 
 
-  violin.append("path")
-    .datum(violinData)
-    .style("stroke", "#0073e6")
-    .style("fill", "none")
-    .attr("d", d3.line()
-                  .curve(d3.curveBasis)
-                  .x(function(d,i) { return x(d.count); })
-                  .y(function(d,i) { return y(d.bin); }));
+//   let violinLine = d3.line()
+//     .curve(d3.curveBasis)
+//     .x(function(d,i) { return x(d.count); })
+//     .y(function(d,i) { return y(d.bin); });
 
-  x.range([0, -150]);
-  violin.append("path")
-    .datum(violinData)
-    .style("stroke", "#0073e6")
-    .style("fill", "none")
-    .attr("d", d3.line()
-                .curve(d3.curveBasis)
-                .x(function(d,i) { return x(d.count); })
-                .y(function(d,i) { return y(d.bin); }));
+//   violin.append("path")
+//     .datum(violinData)
+//     .style("stroke", "#0073e6")
+//     .style('stroke-width', '2')
+//     .style("fill", "none")
+//     .attr("d", violinLine);
 
-  violin.append("line")
-    .style("stroke", "#ff4d4d")
-    .attr('id', 'time-line-p')
-    .attr("x1", 0)
-    .attr("y1", 0)
-    .attr("x2", 0)
-    .attr("y2", 600)
+//   x.range([0, -150]);
 
-  return crop ? [outlierLow, outlierHigh] : [minBins, maxBins]
-}
+//   violin.append("path")
+//     .datum(violinData)
+//     .style("stroke", "#0073e6")
+//     .style('stroke-width', '2')
+//     .style("fill", "none")
+//     .attr("d", violinLine);
+
+//   drawViolinPoints(violin, violinData, x, y);
+
+//   // violin.append('g').selectAll("circle")
+//   // .data(violinData)
+//   // .enter().append("circle")
+//   // .style("stroke", "gray")
+//   // .style("fill", "black")
+//   // .attr("r", 2)
+//   // .attr("cx", function(d) {return x(d.count)})
+//   // .attr("cy", function(d) {return y(d.bin)});
+
+//   // x.range([0, 150]);
+  
+//   // violin.append('g').selectAll("circle")
+//   // .data(violinData)
+//   // .enter().append("circle")
+//   // .style("stroke", "gray")
+//   // .style("fill", "black")
+//   // .attr("r", 2)
+//   // .attr("cx", function(d) {return x(d.count)})
+//   // .attr("cy", function(d) {return y(d.bin)});
+
+//   violin.append("line")
+//     .style("stroke", "#ff4d4d")
+//     .attr('id', 'time-line-p')
+//     .attr("x1", 0)
+//     .attr("y1", 0)
+//     .attr("x2", 0)
+//     .attr("y2", 600)
+
+//   return crop ? [outlierLow, outlierHigh] : [minBins, maxBins]
+// }
 
 function createPipeline(fileName, fileContents) {
   // // Create UI
@@ -477,6 +756,10 @@ function createPipeline(fileName, fileContents) {
   let activeArray = vtkDataArray;
 
   actor.setScale(1,1,5);
+
+  // Create color legend
+  // let preset = vtkColorMaps.getPresetByName(presetSelector.value);
+  // const colorLegend = createColorLegend(0,0,preset);
 
   // --------------------------------------------------------------------
   // Color handling
@@ -547,10 +830,11 @@ function createPipeline(fileName, fileContents) {
 
     let lowT = document.getElementById('lowT').value;
     let highT = document.getElementById('highT').value;
-    threshIdx = loadTimeFile(event.target.value, lowT, highT);
+    violin.threshIdx = loadTimeFile(event.target.value, lowT, highT);
 
-    let binRange = updateViolin(threshIdx, violinCrop);
-    updateEnsemble(binRange, threshIdx);
+    //let binRange = updateViolin(threshIdx, violinCrop);
+    let binRange = violin.update();
+    updateEnsemble(binRange, violin.threshIdx);
         
     renderWindow.render();
   }
@@ -632,29 +916,14 @@ function createPipeline(fileName, fileContents) {
       dataRange[0] = newDataRange[0];
       dataRange[1] = newDataRange[1];
       colorMode = ColorMode.MAP_SCALARS;
-      scalarMode =
-        location === 'PointData'
-          ? ScalarMode.USE_POINT_FIELD_DATA
-          : ScalarMode.USE_CELL_FIELD_DATA;
+      // scalarMode =
+      //   location === 'PointData'
+      //     ? ScalarMode.USE_POINT_FIELD_DATA
+      //     : ScalarMode.USE_CELL_FIELD_DATA;
 
-      const numberOfComponents = activeArray.getNumberOfComponents();
-      if (numberOfComponents > 1) {
-        // always start on magnitude setting
-        if (currentMapper.getLookupTable()) {
-          const lut = currentMapper.getLookupTable();
-          lut.setVectorModeToMagnitude();
-        }
-        componentSelector.style.display = 'block';
-        const compOpts = ['Magnitude'];
-        while (compOpts.length <= numberOfComponents) {
-          compOpts.push(`Component ${compOpts.length}`);
-        }
-        componentSelector.innerHTML = compOpts
-          .map((t, index) => `<option value="${index - 1}">${t}</option>`)
-          .join('');
-      } else {
-        componentSelector.style.display = 'none';
-      }
+      scalarMode = ScalarMode.USE_CELL_FIELD_DATA;
+
+
     } else {
       componentSelector.style.display = 'none';
     }
@@ -674,12 +943,16 @@ function createPipeline(fileName, fileContents) {
     // We already have the thresholded indices!
     let colorProp = e.target.value.split(':')[1];
     let threshProp = document.getElementById('thresholdBySelector').options[thresholdBySelector.selectedIndex].text;
-    if (threshProp != 'None') {
-      if (Array.isArray(resData['reservoir_data']['unstructured'][colorProp.toLowerCase()][time])){  
-        var colorData = resData['reservoir_data']['unstructured'][colorProp.toLowerCase()][time]  // time-series property, eg pressure
+
+    if (colorProp === '') {
+
+    }
+    else if (threshProp != 'None') {
+      if (Array.isArray(resData['reservoir_data']['unstructured'][colorProp.toLowerCase()][0])){  
+        var colorData = resData['reservoir_data']['unstructured'][colorProp.toLowerCase()][time];  // time-series property, eg pressure
       }
       else {
-        var colorData = resData['reservoir_data']['unstructured'][colorProp.toLowerCase()] // static property, eg porosity
+        var colorData = resData['reservoir_data']['unstructured'][colorProp.toLowerCase()]; // static property, eg porosity
       }
   
       var newColorData = [];
@@ -689,14 +962,22 @@ function createPipeline(fileName, fileContents) {
       innerPolys.getCellData().setScalars(
         vtkDataArray.newInstance({name: colorProp, values: newColorData})
       )
+
+      let dMax = resData['reservoir_data']['unstructured']['dataRanges'][colorProp]['max']
+      let dMin = resData['reservoir_data']['unstructured']['dataRanges'][colorProp]['min']
+  
+      const preset = vtkColorMaps.getPresetByName(presetSelector.value);
+      lookupTable.applyColorMap(preset);
+      lookupTable.setMappingRange(dMin, dMax);
+      lookupTable.updateRange();
     }
 
     //Otherwise, get color data array for outer mesh
     else {
       let cell_data = source.getCellData();
-      if (Array.isArray(resData['reservoir_data']['structured'][colorProp.toLowerCase()][time])){ 
+      if (Array.isArray(resData['reservoir_data']['structured'][colorProp.toLowerCase()])){ 
         let colorData = cell_data.getArrayByName(colorProp);
-        colorData.setData(resData['reservoir_data']['structured'][colorProp.toLowerCase()][time]);
+        colorData.setData(resData['reservoir_data']['structured'][colorProp.toLowerCase()]);
       }
   
       let dMax = resData['reservoir_data']['structured']['dataRanges'][colorProp]['max']
@@ -738,6 +1019,8 @@ function createPipeline(fileName, fileContents) {
   actor.setMapper(mapper);
   mapper.setInputData(source);
   renderer.addActor(actor);
+
+  // renderer.addActor(colorLegend);
 
   // Manage update when lookupTable change
   lookupTable.onModified(() => {
@@ -863,18 +1146,18 @@ function loadTimeFile(time, lowThresh, highThresh) {
     threshDataIdx = [];
   
     // Get thresholded cell data for new array
-    if (Array.isArray(resData['reservoir_data']['unstructured'][threshProp.toLowerCase()][time])){  
-      var threshData = resData['reservoir_data']['unstructured'][threshProp.toLowerCase()][time]  // time-series property, eg pressure
+    if (Array.isArray(resData['reservoir_data']['unstructured'][threshProp.toLowerCase()][0])){  
+      var threshData = resData['reservoir_data']['unstructured'][threshProp.toLowerCase()][time];  // time-series property, eg pressure
     }
     else {
-      var threshData = resData['reservoir_data']['unstructured'][threshProp.toLowerCase()] // static property, eg porosity
+      var threshData = resData['reservoir_data']['unstructured'][threshProp.toLowerCase()]; // static property, eg porosity
     }
 
     // If 'Color by' prop is different than threshold prop, get color prop data
     // Get thresholded cell data for new array
     if (showColor) {
-      if (Array.isArray(resData['reservoir_data']['unstructured'][colorProp.toLowerCase()][time])){  
-        var colorData = resData['reservoir_data']['unstructured'][colorProp.toLowerCase()][time]  // time-series property, eg pressure
+      if (Array.isArray(resData['reservoir_data']['unstructured'][colorProp.toLowerCase()][0])){  
+        var colorData = resData['reservoir_data']['unstructured'][colorProp.toLowerCase()][time] // time-series property, eg pressure
       }
       else {
         var colorData = resData['reservoir_data']['unstructured'][colorProp.toLowerCase()] // static property, eg porosity
@@ -972,13 +1255,18 @@ function loadTimeFile(time, lowThresh, highThresh) {
     if (showColor) {
       let dMax = resData['reservoir_data']['structured']['dataRanges'][colorProp]['max']
       let dMin = resData['reservoir_data']['structured']['dataRanges'][colorProp]['min']
-  
+
       const preset = vtkColorMaps.getPresetByName(presetSelector.value);
       lookupTable.applyColorMap(preset);
       lookupTable.setMappingRange(dMin, dMax);
       lookupTable.updateRange();
     }
+
+    renderer.removeActor(actor_inside);
+    actor.getProperty().setOpacity(1);
   }
+
+  
 
   renderWindow.render();
 
@@ -1094,25 +1382,35 @@ function load(container, options) {
 
     ensembleControls.append('input')
     .attr('type', 'button')
-    .attr('id', 'iqr-button-outliers')
-    .attr('value', 'Show outliers');
+    .attr('id', 'iqr-button-points')
+    .attr('value', 'Show points');
 
     document.getElementById('iqr-button-crop').addEventListener('click', function() {
-      violinCrop = !violinCrop;
-      d3.select('#iqr-button-crop').attr('value', function() {return violinCrop ? 'Uncrop plot' : 'Crop plot'});
-      let binRange = updateViolin(threshIdx, violinCrop);
-      updateEnsemble(binRange, threshIdx);
+      //violinCrop = !violinCrop;
+      violin.crop = !violin.crop;
+      d3.select('#iqr-button-crop').attr('value', function() {return violin.crop ? 'Uncrop plot' : 'Crop plot'});
+      let binRange = violin.update(this.threshIdx, this.crop);
+      //let binRange = updateViolin(threshIdx, violinCrop);
+      updateEnsemble(binRange, violin.threshIdx);
     })
 
+    // document.getElementById('iqr-button-points').addEventListener('click', function() {
+    //   violinShowPoints = !violinShowPoints;
+    //   d3.select('#iqr-button-crop').attr('value', function() {return violinShowPoints ? 'Hide points' : 'Show points'});
 
-  // PRESSURE range plot
-  var plot = pc.append('svg')      
-    .style('width', '100%')
-    .style('height', '70%')
-    .style('background-color', 'gray')
-    .append('g')
-    .attr('id', 'pressure-ensemble')
-    .attr('transform', 'translate(60, 20)');
+    //   if (violinShowPoints) drawViolinPoints(
+  
+    // })
+
+
+    // PRESSURE range plot
+    var plot = pc.append('svg')      
+      .style('width', '100%')
+      .style('height', '70%')
+      .style('background-color', 'gray')
+      .append('g')
+      .attr('id', 'pressure-ensemble')
+      .attr('transform', 'translate(60, 20)');
 
 
     // set the ranges
@@ -1122,27 +1420,16 @@ function load(container, options) {
     x.domain([0, pMax.length]);
     y.domain([d3.min(pMin), d3.max(pMax)]);
 
-    // Add the pMax path
-    let maxPlot = plot.append('g').attr('id', 'ensemble-max');
-    maxPlot.append("path")
-      .datum(pMax)
-      .style("stroke", "#0073e6")
-      .style("fill", "none")
-      .attr("d", d3.line()
-                    .curve(d3.curveBasis)
-                    .x(function(d,i) { return x(i); })
-                    .y(function(d) { return y(d); }));
+    // Draw area chart for pMin and pMax
+    d3.select('#pressure-ensemble')
+      .append('g')
+      .attr('id', 'ensemble-min-max');
+    drawAreaChart(x, y);
 
-    // Add the pMin path
-    let minPlot = plot.append('g').attr('id', 'ensemble-min');
-    minPlot.append("path")
-      .datum(pMin)
-      .style("stroke", "#0073e6")
-      .style("fill", "none")
-      .attr("d", d3.line()
-                    .curve(d3.curveBasis)
-                    .x(function(d,i) { return x(i); })
-                    .y(function(d) { return y(d); }));
+    // // Add brush for selecting data subsets
+    // plot.call(d3.brush()
+    // .extent([[0,0], [800,600]]))
+    // .on("start brush end", brushed);;
 
     // Add X axis
     plot.append("g")
@@ -1202,31 +1489,38 @@ function load(container, options) {
       }
     }
 
-    var violin = plot.append('g')
-      .attr("transform", "translate(" + x(0) + ", 0)")
+    var vSvg = plot.append('g')
+      .attr("transform", "translate(" + x(0) + ", 0)");
 
-    violin.append("line")
-      .style("stroke", "#ff4d4d")
-      .attr('id', 'time-line-p')
-      .attr("x1", 0)
-      .attr("y1", 0)
-      .attr("x2", 0)
-      .attr("y2", 600)
-    
     x = d3.scaleLinear().range([0, 50]);
     y = d3.scaleLinear().range([600, 0]);
     x.domain([0, countsMax]);
     y.domain([d3.min(bins), d3.max(bins)]);
 
-    violin.append("path").attr('id', 'pressure-violin')
-      .datum(newData)
-      .style("stroke", "#0073e6")
-      .style("fill", "none")
-      .attr("d", d3.line()
-                    .curve(d3.curveBasis)
-                    .x(function(d,i) { return x(d.count); })
-                    .y(function(d,i) { return y(d.bin); })
-                );
+    // Create violin object
+    violin = new Violin(newData, vSvg, false, x, y);
+
+    violin.timeLine();
+
+    // // Draw vertical time line
+    // violin.append("line")
+    //   .style("stroke", "#ff4d4d")
+    //   .attr('id', 'time-line-p')
+    //   .attr("x1", 0)
+    //   .attr("y1", 0)
+    //   .attr("x2", 0)
+    //   .attr("y2", 600)
+    
+    violin.drawBorder();
+    // violin.append("path").attr('id', 'pressure-violin')
+    //   .datum(newData)
+    //   .style("stroke", "#0073e6")
+    //   .style("fill", "none")
+    //   .attr("d", d3.line()
+    //                 .curve(d3.curveBasis)
+    //                 .x(function(d,i) { return x(d.count); })
+    //                 .y(function(d,i) { return y(d.bin); })
+    //             );
 
 
     // // Make a violin plot of sgas data at a single time step
