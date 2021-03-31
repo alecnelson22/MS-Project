@@ -67,13 +67,14 @@ class Violin {
   // Draw circles
   circles() {
     let that = this;
-    this.svg.append('g').selectAll("circle")
-    .data(this.data)
-    .enter().append("circle")
-    .attr('class', function() { return this.showPoints ? 'non_brushed' : 'hidden'})
-    .attr("r", 2)
-    .attr("cx", function(d) {return that.xScale(d.count)})
-    .attr("cy", function(d) {return that.yScale(d.bin)});
+    this.svg.append('g')
+      .selectAll("circle")
+      .data(this.data)
+      .enter().append("circle")
+      .attr('class', function() { return that.showPoints ? 'non_brushed' : 'hidden'})
+      .attr("r", 2)
+      .attr("cx", function(d) {return that.xScale(d.count)})
+      .attr("cy", function(d) {return that.yScale(d.bin)});
   }
 
   // Draw path
@@ -99,7 +100,7 @@ class Violin {
 
   // Draw all points representing violin points
   drawPoints() {
-    this.circles();
+    //this.circles();
     this.xScale.range([0, 150]); 
     this.circles();
   }
@@ -133,7 +134,7 @@ class Violin {
     this.xScale.domain([0, 64]);
   
     let data = resData['reservoir_data']['pressure_violin'][time];
-    let newData = [];
+    let newData = {};
     let bins = Object.values(data);
   
     function getVDat(cell) {
@@ -198,9 +199,15 @@ class Violin {
       this.outlierHigh = q3 + mult * iqr;
     }
   
+
     this.svg = pressure_ensemble.append('g')
       .attr('id', 'pressure-violin')
       .attr("transform", "translate(" + this.xScale(time) + ", 0)")
+
+    // Add brush for selecting data subsets
+    this.svg.append('g').call(d3.brush()
+    //.extent([[0,0], [800,600]]))
+    .on("brush", highlightElements));
     
     this.xScale = d3.scaleLinear().range([0, 150]);
     this.yScale = d3.scaleLinear().range([600, 0]);
@@ -211,6 +218,7 @@ class Violin {
     this.drawBorder();
     this.drawPoints();
     this.timeLine();
+
   
     return this.crop ? [this.outlierLow, this.outlierHigh] : [minBins, maxBins]
   }
@@ -386,7 +394,6 @@ function createColorLegend(
 }
 
 
-
 function setSelectors() {
   // Create UI
   presetSelector = document.createElement('select');
@@ -513,7 +520,46 @@ function setSelectors() {
   controlContainer.appendChild(highT);
   controlContainer.appendChild(submit);
   rootControllerContainer.appendChild(controlContainer);
+}
 
+function isBrushed(brush_coords, cx, cy) {
+  var x0 = brush_coords[0][0],
+      x1 = brush_coords[1][0],
+      y0 = brush_coords[0][1],
+      y1 = brush_coords[1][1];
+ return x0 <= cx && cx <= x1 && y0 <= cy && cy <= y1;
+}
+
+// Called on brushed elements from the violin plot
+// Would like to split into two sections
+//   1) hightlight brushed circles
+//   2) hightlight corresponding cell edges
+function highlightElements(event) {
+  if (event.selection != null) {
+
+    let circles = d3.select('#pressure-ensemble')
+      .select('#pressure-violin')
+      .selectAll('circle');
+
+    // Unhighlight all circles
+    circles.attr("class", "non_brushed");
+
+    // Highlight brushed circles
+    circles.filter(function (){
+      var cx = d3.select(this).attr("cx"),
+          cy = d3.select(this).attr("cy");
+      return isBrushed(event.selection, cx, cy);
+      })
+      .attr("class", "brushed");
+
+    var d_brushed =  d3.selectAll(".brushed").data();
+    if (d_brushed.length > 0) {
+      for (let c of d_brushed) {
+        let test = c;
+        let test2 = 0;
+      }
+    } 
+  }
 }
 
 function onSubmit() {
@@ -1282,10 +1328,10 @@ function load(container, options) {
       .attr('id', 'ensemble-min-max');
     drawAreaChart(x, y);
 
-    // Add brush for selecting data subsets
-    plot.call(d3.brush()
-    .extent([[0,0], [800,600]]))
-    //.on("brush", highlightElements);
+    // // Add brush for selecting data subsets
+    // plot.call(d3.brush()
+    // .extent([[0,0], [800,600]]))
+    // .on("brush", highlightElements);
     
 
     // Add X axis
