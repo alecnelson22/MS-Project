@@ -31,6 +31,7 @@ let mapper_inside;
 
 let innerPolys;
 let threshDataIdx;
+let circlesWereSelected = false;
 
 let files;
 
@@ -47,8 +48,7 @@ let time;
 let resData;
 
 
-
-
+// Define application objects
 let violin;
 
 class Violin {
@@ -207,14 +207,13 @@ class Violin {
     let minBins = d3.min(this.bins);
     let maxBins = d3.max(this.bins);
 
-
     this.data = newData;
     let allBins = [];
     if (this.crop) {
       if (time != 0) {
         for (let i = 0; i < this.bins.length; i++) {
           if (this.crop) allBins.push(...Array(counts[i]).fill(this.bins[i]));  
-      }
+        }
       }
 
       let q1 = d3.quantile(allBins, .25);
@@ -225,14 +224,12 @@ class Violin {
       this.outlierHigh = q3 + mult * iqr;
     }
   
-
     this.svg = pressure_ensemble.append('g')
       .attr('id', 'pressure-violin')
       .attr("transform", "translate(" + this.xScale(time) + ", 0)")
 
     // Add brush for selecting data subsets
     this.svg.append('g').call(d3.brush()
-    //.extent([[0,0], [800,600]]))
     .on("brush", highlightElements));
     
     this.xScale = d3.scaleLinear().range([0, 150]);
@@ -245,7 +242,6 @@ class Violin {
     this.drawPoints();
     this.timeLine();
 
-  
     return this.crop ? [this.outlierLow, this.outlierHigh] : [minBins, maxBins]
   }
 }
@@ -579,7 +575,9 @@ function highlightElements(event) {
       .attr("class", "brushed");
 
     var d_brushed =  d3.selectAll(".brushed").data();
+    // circles are selected, threshold cells in render view
     if (d_brushed.length > 0) {
+      circlesWereSelected = true;
       let threshCirclesIdx = [];
       for (let c of d_brushed) {
         threshCirclesIdx.push(...c.cells);
@@ -590,6 +588,18 @@ function highlightElements(event) {
       let highT = document.getElementById('highT').value;
       loadTimeFile(time, lowT, highT, threshCirclesIdx);
     } 
+    // nothing is selected, reset render view to 
+    else {
+      if (circlesWereSelected) {
+        let time = document.getElementById('timeSelector').value;
+        let lowT = document.getElementById('lowT').value;
+        let highT = document.getElementById('highT').value;
+        loadTimeFile(time, lowT, highT);
+
+        circlesWereSelected = false;
+
+      }
+    }
     
   }
 }
@@ -1451,112 +1461,7 @@ function load(container, options) {
     violin = new Violin(newData, vSvg, false, x, y);
 
     violin.timeLine();
-
-    // // Draw vertical time line
-    // violin.append("line")
-    //   .style("stroke", "#ff4d4d")
-    //   .attr('id', 'time-line-p')
-    //   .attr("x1", 0)
-    //   .attr("y1", 0)
-    //   .attr("x2", 0)
-    //   .attr("y2", 600)
-    
-    violin.drawBorder();
-    // violin.append("path").attr('id', 'pressure-violin')
-    //   .datum(newData)
-    //   .style("stroke", "#0073e6")
-    //   .style("fill", "none")
-    //   .attr("d", d3.line()
-    //                 .curve(d3.curveBasis)
-    //                 .x(function(d,i) { return x(d.count); })
-    //                 .y(function(d,i) { return y(d.bin); })
-    //             );
-
-
-    // // Make a violin plot of sgas data at a single time step
-    // let data = resData['reservoir_data']['sgas_violin'][0];
-
-    // let newData = [];
-    // let bins = Object.keys(data);
-    // let counts = Object.values(data);
-    // let countsMax = d3.max(counts);
-
-    // for (let i = 0; i < bins.length; i++) {
-    //   if (bins[i] > 0 && bins[i] < .98) { //TODO hardcoded
-    //     newData.push({"bin": bins[i], "count": counts[i]});
-    //   }
-    // }
-
-    // var violin = plot.append('g')
-    //   .attr("transform", "translate(" + x(0) + ", 0)")
-
-    // violin.append("line")
-    //   .style("stroke", "#ff4d4d")
-    //   .attr("x1", 0)
-    //   .attr("y1", 0)
-    //   .attr("x2", 0)
-    //   .attr("y2", 400)
-    
-    // x = d3.scaleLinear().range([0, 50]);
-    // y = d3.scaleLinear().range([400, 0]);
-    // x.domain([0, countsMax]);
-    // y.domain([d3.min(bins), d3.max(bins)]);
-
-    // violin.append("path").attr('id', 'sgas-violin')
-    //   .datum(newData)
-    //   .style("stroke", "#0073e6")
-    //   .style("fill", "none")
-    //   .attr("d", d3.line()
-    //                 .curve(d3.curveBasis)
-    //                 .x(function(d,i) { return x(d.count); })
-    //                 .y(function(d,i) { return y(d.bin); })
-    //             );
-                
-
-    // // SGAS range plot
-    // plot = canvas.append('g')
-    //   .attr('id', 'sgas-ensemble')
-    //   .attr('transform', 'translate(330, 270)');
-    // // set the ranges
-    // var x = d3.scaleLinear().range([0, 200]);
-    // var y = d3.scaleLinear().range([200, 0]);
-    // // Scale the range of the data
-    // x.domain([0, sMax.length]);
-    // y.domain([d3.min(sMin), d3.max(sMax)]);
-    // // Add the sMax path
-    // plot.append("path")
-    // .datum(sMax)
-    // .style("stroke", "#0073e6")
-    // .style("fill", "none")
-    // .attr("d", d3.line()
-    //               .x(function(d,i) { return x(i); })
-    //               .y(function(d) { return y(d); })
-    //           );
-    // // Add the sMin path
-    // plot.append("path")
-    // .datum(sMin)
-    // .style("stroke", "#0073e6")
-    // .style("fill", "none")
-    // .attr("d", d3.line()
-    //               .x(function(d,i) { return x(i); })
-    //               .y(function(d) { return y(d); })
-    //           );
-    // // Add X axis
-    // plot.append("g")
-    //   .attr("transform", "translate(0,200)")
-    //   .call(d3.axisBottom(x));
-    // // Add Y axis
-    // plot.append("g")
-    //   .call(d3.axisLeft(y));
-    // plot.append("text")
-    // .attr("x", 100)
-    // .attr("y", -5)
-    // .attr("fill", "#000")
-    // .attr("font-weight", "bold")
-    // .attr("text-anchor", "middle")
-    // .attr("font-size", "x-small")
-    // .text("Average Ensemble Gas Saturation");
-
+    //violin.drawBorder();
 
 
     let cyls = data1['reservoir_data']['well_cylinders'];
