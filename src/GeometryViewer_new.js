@@ -1,6 +1,7 @@
 let macro = vtk.macro;
 let HttpDataAccessHelper = vtk.IO.Core.DataAccessHelper.HttpDataAccessHelper;
 let vtkActor = vtk.Rendering.Core.vtkActor;
+let vtkActor2D = vtk.Rendering.Core.vtkActor2D;
 let vtkDataArray = vtk.Common.Core.vtkDataArray;
 let vtkColorMaps = vtk.Rendering.Core.vtkColorTransferFunction.vtkColorMaps;
 let vtkColorTransferFunction = vtk.Rendering.Core.vtkColorTransferFunction;
@@ -11,6 +12,7 @@ let vtkXMLPolyDataReader = vtk.IO.XML.vtkXMLPolyDataReader;
 let vtkFPSMonitor = vtk.Interaction.UI.vtkFPSMonitor;
 let vtkDataSet = vtk.Common.DataModel.vtkDataSet;
 let vtkCylinderSource = vtk.Filters.Sources.vtkCylinderSource;
+let vtkFollower = vtk.Rendering.Core.vtkFollower;
 
 // Cell Picker
 let vtkCellPicker = vtk.Rendering.Core.vtkCellPicker;
@@ -28,6 +30,9 @@ let source;
 let source_inside;
 let mapper;
 let mapper_inside;
+let colorLegendMapper;
+
+let legendPolyData;
 
 let innerPolys;
 let threshDataIdx;
@@ -42,6 +47,8 @@ let autoInit = true;
 let background = [0, 0, 0];
 let renderWindow;
 let renderer;
+let renderer2;
+let renderWindow2;
 let presetSelector;
 
 let time;
@@ -50,6 +57,13 @@ let resData;
 
 // Define application objects
 let violin;
+
+class RenderView {
+  constructor(cellData, colorData) {
+    this.cellData = cellData;
+    this.colorData = colorData;
+  }
+}
 
 class Violin {
   constructor(data, svg, crop, xScale, yScale) {
@@ -97,7 +111,7 @@ class Violin {
     .attr("x1", 0)
     .attr("y1", 0)
     .attr("x2", 0)
-    .attr("y2", 600)
+    .attr("y2", 400)
   }
 
   // Draw all points representing violin points
@@ -129,8 +143,8 @@ class Violin {
       let idx = that.binIdx[b];
       return that.yScale(that.data[idx].bin); });
     this.path();
-    this.xScale.range([0, -150]); 
-    this.path();
+    // this.xScale.range([0, -150]); 
+    // this.path();
   }
   
   update() {
@@ -228,12 +242,12 @@ class Violin {
       .attr('id', 'pressure-violin')
       .attr("transform", "translate(" + this.xScale(time) + ", 0)")
 
-    // Add brush for selecting data subsets
-    this.svg.append('g').call(d3.brush()
-    .on("brush", highlightElements));
+    // // Add brush for selecting data subsets
+    // this.svg.append('g').call(d3.brush()
+    // .on("brush", highlightElements));
     
     this.xScale = d3.scaleLinear().range([0, 150]);
-    this.yScale = d3.scaleLinear().range([600, 0]);
+    this.yScale = d3.scaleLinear().range([400, 0]);
     this.xScale.domain([0, countsMax]);
     this.yScale.domain(this.crop ? [this.outlierLow,  this.outlierHigh] : [minBins, maxBins]); 
   
@@ -241,6 +255,10 @@ class Violin {
     this.drawBorder();
     this.drawPoints();
     this.timeLine();
+
+    // Add brush for selecting data subsets
+    this.svg.append('g').call(d3.brush()
+    .on("brush", highlightElements));
 
     return this.crop ? [this.outlierLow, this.outlierHigh] : [minBins, maxBins]
   }
@@ -349,6 +367,34 @@ function createViewer(container) {
   }
 }
 
+function createViewer2(container) {
+  const fullScreenRenderer2 = vtkFullScreenRenderWindow.newInstance({
+    background,
+    rootContainer: container,
+    // containerStyle: { height: '100%', width: '50%', position: 'absolute', padding: '2em' },
+    containerStyle: { height: '18%', width: '2%', position: 'absolute', bottom: '10px', left: '10px'},
+  });
+  renderer2 = fullScreenRenderer2.getRenderer();
+  renderWindow2 = fullScreenRenderer2.getRenderWindow();
+  //renderWindow2.getInteractor().setDesiredUpdateRate(15);
+
+  container.appendChild(rootControllerContainer);
+  container.appendChild(addDataSetButton);
+
+  if (userParams.fps) {
+    if (Array.isArray(userParams.fps)) {
+      fpsMonitor.setMonitorVisibility(...userParams.fps);
+      if (userParams.fps.length === 4) {
+        fpsMonitor.setOrientation(userParams.fps[3]);
+      }
+    }
+    fpsMonitor.setRenderWindow(renderWindow2);
+    fpsMonitor.setContainer(container);
+    fullScreenRenderer2.setResizeCallback(fpsMonitor.update);
+  }
+}
+
+
 function createColorLegend(
   offsetX,
   offsetY,
@@ -356,7 +402,7 @@ function createColorLegend(
   min = 0,
   max = 1
 ) {
-  const polydata = vtk({
+  legendPolyData = vtk({
     vtkClass: 'vtkPolyData',
     points: {
       vtkClass: 'vtkPoints',
@@ -366,14 +412,14 @@ function createColorLegend(
         offsetX,
         offsetY,
         0,
-        offsetX + 100,
+        offsetX + 1,
         offsetY,
         0,
-        offsetX + 100,
-        offsetY + 400,
+        offsetX + 1,
+        offsetY + 5,
         0,
         offsetX,
-        offsetY + 400,
+        offsetY + 5,
         0,
       ],
     },
@@ -398,23 +444,35 @@ function createColorLegend(
     },
   });
 
-  const actor = vtkActor.newInstance();
-  const mapper = vtkMapper.newInstance({ interpolateScalarsBeforeMapping: true });
-  actor.setMapper(mapper);
-  mapper.setInputData(polydata);
-  actor.getProperty().set({ edgeVisibility: true, edgeColor: [1, 1, 1] });
+  // const actorLegend = vtkActor.newInstance();
+
+  colorLegendMapper = vtkMapper.newInstance({ interpolateScalarsBeforeMapping: true });
+  let actorLegend = vtkFollower.newInstance();
+  actorLegend.setCamera(renderer2.getActiveCamera());
+  colorLegendMapper.setInputConnection(legendPolyData);
+
+  actorLegend.setMapper(colorLegendMapper);
+  colorLegendMapper.setInputData(legendPolyData);
+  actorLegend.getProperty().set({ edgeVisibility: true, edgeColor: [1, 1, 1] });
 
   if (preset) {
     const preset = vtkColorMaps.getPresetByName(presetSelector.value);
     lookupTable.applyColorMap(preset);
-    mapper.setLookupTable(lookupTable);
+    colorLegendMapper.setLookupTable(lookupTable);
     // lookupTable.setMappingRange(dataRange[0], dataRange[1]);
     // lookupTable.updateRange();
   }
 
-  return actor;
+  return actorLegend;
 }
 
+
+function updateColorLegend() {
+  const preset = vtkColorMaps.getPresetByName(presetSelector.value);
+  lookupTable.applyColorMap(preset);
+  colorLegendMapper.setLookupTable(lookupTable);
+  renderWindow2.render();
+}
 
 function setSelectors() {
   // Create UI
@@ -542,6 +600,8 @@ function setSelectors() {
   controlContainer.appendChild(highT);
   controlContainer.appendChild(submit);
   rootControllerContainer.appendChild(controlContainer);
+
+  const colorLegendContainer = document.createElement('div');
 }
 
 function isBrushed(brush_coords, cx, cy) {
@@ -583,10 +643,41 @@ function highlightElements(event) {
         threshCirclesIdx.push(...c.cells);
       }
       threshCirclesIdx = [...new Set(threshCirclesIdx)];  // remove duplicate elements
+
+
+
       let time = document.getElementById('timeSelector').value;
       let lowT = document.getElementById('lowT').value;
       let highT = document.getElementById('highT').value;
       loadTimeFile(time, lowT, highT, threshCirclesIdx);
+
+
+
+      let props = ['poro', 'perm', 'pressure', 'sgas'];  // todo hardcoded
+      let threshCanvas = d3.select('#data-viewer-thresh');
+      // Update histograms of threshed cells
+      let uData = resData['reservoir_data']['unstructured'];
+      let offset = 0;
+      let d;
+      for (let p in uData) {
+          if (props.includes(p)) {
+            threshCanvas.select('#' + p).remove();
+            if (Array.isArray(uData[p][0])) {  //time-series prop
+              d = uData[p][time];
+            }
+            else {  //static prop
+              d = uData[p];
+            }
+            let histoData = [];
+            for (let i of threshCirclesIdx) {
+              if (d[i*6] != -1) histoData.push(d[i*6]);
+            }
+            makeHisto(threshCanvas, histoData, 200 * offset, p);
+            offset += 1;
+          }
+      }
+
+
     } 
     // nothing is selected, reset render view to 
     else {
@@ -595,6 +686,30 @@ function highlightElements(event) {
         let lowT = document.getElementById('lowT').value;
         let highT = document.getElementById('highT').value;
         loadTimeFile(time, lowT, highT);
+
+        let props = ['poro', 'perm', 'pressure', 'sgas'];  // todo hardcoded
+        let threshCanvas = d3.select('#data-viewer-thresh');
+        // Update histograms of threshed cells
+        let uData = resData['reservoir_data']['unstructured'];
+        let offset = 0;
+        let d;
+        for (let p in uData) {
+            if (props.includes(p)) {
+              threshCanvas.select('#' + p).remove();
+              if (Array.isArray(uData[p][0])) {  //time-series prop
+                d = uData[p][time];
+              }
+              else {  //static prop
+                d = uData[p];
+              }
+              let histoData = [];
+              for (let i of threshDataIdx) {
+                if (d[i] != -1) histoData.push(d[i]);
+              }
+              makeHisto(threshCanvas, histoData, 200 * offset, p);
+              offset += 1;
+            }
+        }
 
         circlesWereSelected = false;
 
@@ -638,7 +753,7 @@ function updateEnsemble(binRange, threshIdx=[]) {
 
   // set the ranges
   var x = d3.scaleLinear().range([0, 800]);
-  var y = d3.scaleLinear().range([600, 0]);
+  var y = d3.scaleLinear().range([400, 0]);
   x.domain([0, pMax.length]); 
   y.domain(binRange); 
 
@@ -655,7 +770,7 @@ function updateEnsemble(binRange, threshIdx=[]) {
   // Add X axis
   plot.append("g")
     .attr('id', 'ensemble-xaxis')
-    .attr("transform", "translate(0,600)")
+    .attr("transform", "translate(0,400)")
     .call(d3.axisBottom(x));
   // Add Y axis
   plot.append("g")
@@ -696,8 +811,8 @@ function createPipeline(fileName, fileContents) {
   actor.setScale(1,1,5);
 
   // Create color legend
-  // let preset = vtkColorMaps.getPresetByName(presetSelector.value);
-  // const colorLegend = createColorLegend(0,0,preset);
+  let preset = vtkColorMaps.getPresetByName(presetSelector.value);
+  const colorLegend = createColorLegend(0,0,preset);
 
   // --------------------------------------------------------------------
   // Color handling
@@ -708,6 +823,7 @@ function createPipeline(fileName, fileContents) {
     lookupTable.applyColorMap(preset);
     lookupTable.setMappingRange(dataRange[0], dataRange[1]);
     lookupTable.updateRange();
+    updateColorLegend();
   }
   applyPreset();
   presetSelector.addEventListener('change', applyPreset);
@@ -958,7 +1074,7 @@ function createPipeline(fileName, fileContents) {
   mapper.setInputData(source);
   renderer.addActor(actor);
 
-  // renderer.addActor(colorLegend);
+  renderer2.addActor(colorLegend);
 
   // Manage update when lookupTable change
   lookupTable.onModified(() => {
@@ -1005,6 +1121,8 @@ function createPipeline(fileName, fileContents) {
   // First render
   renderer.resetCamera();
   renderWindow.render();
+  renderer2.resetCamera();
+  renderWindow2.render();
 
   // global.pipeline[fileName] = {
   //   actor,
@@ -1062,6 +1180,11 @@ function loadFile(file, nfiles) {
 }
 
 // TODO split function up / rename appropriately
+// TODO It is not necessary output information from ReGrid for every single polygon face
+//      Rather we could just output information for every cell, because this function can compute per-face information on the fly!
+//      This would greatly reduce initial file sizes
+// TODO There is a lot of sacrificed performance in rendering polygon faces which are not visible to the user
+//      Unless this is addressed, this application won't be able to scale to bigger meshes
 function loadTimeFile(time, lowThresh, highThresh, threshCirclesIdx=[]) {
   let timeFiles = ["PRESSURE", "SGAS", "PRESSURE_VAR", "SGAS_VAR"];  // TODO hardcoded
   let colorProp = colorBySelector.options[colorBySelector.selectedIndex].text;
@@ -1234,6 +1357,7 @@ function load(container, options) {
 
   if (options.files) {
     createViewer(container);
+    createViewer2(container);
     let count = options.files.length;
     loadFile(options.files[0], count);
     loadUnstructured(options.files[1]);
@@ -1291,13 +1415,25 @@ function load(container, options) {
     var canvas = pc.append('svg')
     .attr('id', 'data-viewer')
     .style('width', '100%')
-    .style('height', '25%')
+    .style('height', '23%')
       .style('background-color', 'gray')
 
     makeHisto(canvas, data1['reservoir_data']['unstructured']['poro'], 0, 'poro');
     makeHisto(canvas, data1['reservoir_data']['unstructured']['perm'], 200, 'perm');
     makeHisto(canvas, data1['reservoir_data']['unstructured']['pressure'][0], 400, 'pressure');
     makeHisto(canvas, data1['reservoir_data']['unstructured']['sgas'][0], 600, 'sgas');
+
+    var threshCanvas = pc.append('svg')
+    .attr('id', 'data-viewer-thresh')
+    .style('width', '100%')
+    .style('height', '23%')
+    .style('background-color', 'gray');
+
+    makeHisto(threshCanvas, data1['reservoir_data']['unstructured']['poro'], 0, 'poro');
+    makeHisto(threshCanvas, data1['reservoir_data']['unstructured']['perm'], 200, 'perm');
+    makeHisto(threshCanvas, data1['reservoir_data']['unstructured']['pressure'][0], 400, 'pressure');
+    makeHisto(threshCanvas, data1['reservoir_data']['unstructured']['sgas'][0], 600, 'sgas');
+  
 
 
     let pMax = resData['reservoir_data']['time_dataRanges']['PRESSURE']['max'];
@@ -1365,7 +1501,7 @@ function load(container, options) {
     // PRESSURE range plot
     var plot = pc.append('svg')      
       .style('width', '100%')
-      .style('height', '70%')
+      .style('height', '50%')
       .style('background-color', 'gray')
       .append('g')
       .attr('id', 'pressure-ensemble')
@@ -1374,7 +1510,7 @@ function load(container, options) {
 
     // set the ranges
     var x = d3.scaleLinear().range([0, 800]);
-    var y = d3.scaleLinear().range([600, 0]);
+    var y = d3.scaleLinear().range([400, 0]);
     // Scale the range of the data
     x.domain([0, pMax.length]);
     y.domain([d3.min(pMin), d3.max(pMax)]);
@@ -1394,7 +1530,7 @@ function load(container, options) {
     // Add X axis
     plot.append("g")
       .attr('id', 'ensemble-xaxis')
-      .attr("transform", "translate(0,600)")
+      .attr("transform", "translate(0,400)")
       .call(d3.axisBottom(x));
     // Add Y axis
     plot.append("g")
@@ -1453,7 +1589,7 @@ function load(container, options) {
       .attr("transform", "translate(" + x(0) + ", 0)");
 
     x = d3.scaleLinear().range([0, 50]);
-    y = d3.scaleLinear().range([600, 0]);
+    y = d3.scaleLinear().range([400, 0]);
     x.domain([0, countsMax]);
     y.domain([d3.min(bins), d3.max(bins)]);
 
@@ -1471,9 +1607,84 @@ function load(container, options) {
   });
 }
 
+// Creates a histogram
+function makeHistoNew(canvas, rData, xOffset, name) {
+
+  let dr = resData['reservoir_data']['unstructured']['dataRanges'][name.toUpperCase()];
+
+
+  let x = d3.scaleLinear()
+  .domain([0, 1])
+  .range([xOffset + 30, xOffset + 200 - 30])
+  .clamp(false);
+
+  let colors = ["black"]
+    .concat(d3.schemeCategory10)
+    .concat(d3.schemePaired)
+    .concat(d3.schemePastel1)
+    .concat(d3.schemePastel2);
+
+
+  let maxBins = 0;
+  let c;
+  for (k in rData) {
+    c = rData[k]['count'];
+    if (c > maxBins) maxBins = c;
+  }
+
+  const width = 300,
+    height = 200,
+    margin = { top: 20, right: 20, bottom: 30, left: 40 },
+    svg = canvas.append('g').attr('id', name),
+    //maxBins = d3.max(buckets, d => d.length),
+    data = buckets.flat(),
+    count = data.length,
+    frequency = y,
+    xAxis = g =>
+      g.attr("transform", `translate(0,${height - margin.bottom})`)
+        .call(d3.axisBottom(x).tickSizeOuter(0))
+        .call(g =>
+          g.append("text")
+            .attr("x", xOffset + 120)
+            .attr("y", -150)
+            .attr("fill", "#000")
+            .attr("font-weight", "bold")
+            .attr("text-anchor", "end")
+            .text(name)
+        );
+
+  const binColor = d3
+  .scaleThreshold()
+  .domain(buckets.map(d => d.x0))
+  .range(colors);
+
+  let binScaleX = d3.scaleLinear()
+          .domain([dr['min'], dr['max']])
+          .range([offset, offset + 160]);
+
+  let binScaleY = d3.scaleLinear()
+    .domain([0, maxBins])
+    .range([height - margin.bottom, margin.top]);
+
+  svg.append("g")
+    .selectAll("rect")
+    .data(rData)
+    .join("rect")
+    .attr("fill",'#0073e6')
+
+    //.attr("x", (d,i) => xOffset + (i * 8 + 30))
+    .attr('x', d => binScale(d.bin))
+    .attr("width", 8)
+    .attr("y", d => y(d.length))
+    .attr("height", d => y(0) - y(d.length));
+
+  svg.append("g").call(xAxis);
+
+}
+
 
 // Creates a histogram
-function makeHisto(canvas, rData, xOffset, name) {
+function makeHisto(canvas, rData, xOffset, name) {  // TODO make histo object
 
   let x = d3.scaleLinear()
   .domain([0, 1])
