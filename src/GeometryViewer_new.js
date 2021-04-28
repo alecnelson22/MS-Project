@@ -81,6 +81,7 @@ class Violin {
     this.bins;
     this.binIdx;
     this.showPoints = false;
+    this.autoRescale = true;
   }
 
   // Draw circles
@@ -233,12 +234,14 @@ class Violin {
         }
       }
 
-      let q1 = d3.quantile(allBins, .25);
-      let q3 = d3.quantile(allBins, .75);
-      let iqr = q3 - q1;
-      let mult = document.getElementById('iqr').value;
-      this.outlierLow = q1 - mult * iqr;
-      this.outlierHigh = q3 + mult * iqr;
+      if (this.autoRescale) {
+        let q1 = d3.quantile(allBins, .25);
+        let q3 = d3.quantile(allBins, .75);
+        let iqr = q3 - q1;
+        let mult = document.getElementById('iqr').value;
+        this.outlierLow = q1 - mult * iqr;
+        this.outlierHigh = q3 + mult * iqr;
+      }
     }
   
     this.svg = pressure_ensemble.append('g')
@@ -1470,12 +1473,18 @@ function load(container, options) {
       return d;
     })
 
-    ensembleControls.append('text')
-      .text('Interquartile range multiplier: ');
+    let iqr = ensembleControls.append('div')
+      .text('IQR multiplier: ')
+      .attr('class', 'tooltip');
+
+    iqr.append('span')
+      .text('Interquartile range IQR = Q3 − Q1.  Outliers are observations that fall below Q1 − IQRM * IQR or above Q3 + IQRM * IQR.  Crop plot based on this range.')
+      .attr('class', 'tooltiptext');
 
     ensembleControls.append('input') 
       .attr('id', 'iqr')   
       .attr('type', 'text')
+      .style('width', '100px')
       .attr('value', 1.5);
 
     ensembleControls.append('input')
@@ -1487,6 +1496,11 @@ function load(container, options) {
     .attr('type', 'button')
     .attr('id', 'iqr-button-points')
     .attr('value', 'Show points');
+
+    ensembleControls.append('input')
+    .attr('type', 'button')
+    .attr('id', 'auto-rescale-button')
+    .attr('value', 'Disable auto-rescale');
 
     document.getElementById('iqr-button-crop').addEventListener('click', function() {
       violin.crop = !violin.crop;
@@ -1505,6 +1519,20 @@ function load(container, options) {
         else {
           violin.hidePts();
           return 'Show points';
+        }
+      })
+    })
+
+    document.getElementById('auto-rescale-button').addEventListener('click', function() {
+      violin.autoRescale= !violin.autoRescale;
+      d3.select('#auto-rescale-button').attr('value', function() {
+        if (violin.autoRescale) {
+          // violin.disableRescale();
+          return 'Disable auto-rescale';
+        }
+        else {
+          // violin.enableRescale();
+          return 'Enable auto-rescale';
         }
       })
     })
