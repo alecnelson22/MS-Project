@@ -22,6 +22,7 @@ let ColorMode = vtk.Rendering.Core.vtkMapper.ColorMode;
 let ScalarMode = vtk.Rendering.Core.vtkMapper.ScalarMode;
 
 let lookupTable = vtkColorTransferFunction.newInstance();
+let lookupTableColorLegend = vtkColorTransferFunction.newInstance();
 let vtpReader = vtkXMLPolyDataReader.newInstance();
 
 let actor = vtkActor.newInstance();
@@ -50,6 +51,8 @@ let renderer;
 let renderer2;
 let renderWindow2;
 let presetSelector;
+
+let dataRange;
 
 let time;
 let resData;
@@ -111,7 +114,7 @@ class Violin {
     .attr("x1", 0)
     .attr("y1", 0)
     .attr("x2", 0)
-    .attr("y2", 400)
+    .attr("y2", 380)
   }
 
   // Draw all points representing violin points
@@ -151,7 +154,7 @@ class Violin {
     var pressure_ensemble = d3.select('#pressure-ensemble');
     pressure_ensemble.select('#pressure-violin').remove();
   
-    this.xScale = d3.scaleLinear().range([0, 800]);
+    this.xScale = d3.scaleLinear().range([30, 750]);
     this.xScale.domain([0, 64]);
   
     let data = resData['reservoir_data']['pressure_violin'][time];
@@ -247,7 +250,7 @@ class Violin {
     // .on("brush", highlightElements));
     
     this.xScale = d3.scaleLinear().range([0, 150]);
-    this.yScale = d3.scaleLinear().range([400, 0]);
+    this.yScale = d3.scaleLinear().range([380, 0]);
     this.xScale.domain([0, countsMax]);
     this.yScale.domain(this.crop ? [this.outlierLow,  this.outlierHigh] : [minBins, maxBins]); 
   
@@ -367,19 +370,32 @@ function createViewer(container) {
   }
 }
 
-function createViewer2(container) {
+function createViewer2() {
+  let ct = d3.selectAll('.fullscreen').append('div')
+    .attr('class', 'colorLegendContainer')
+    .attr('id', 'colorLegendContainer');
+
+  function makeColorLegendLabel(ypos){
+    ct.append('text').text('NA')
+    .style('position', 'absolute')  
+    .style('left', '55px')
+    .style(ypos, '10px')
+    .style('font-weight', 'bold')
+    .style('color', 'white');
+  }
+  makeColorLegendLabel('top');
+  makeColorLegendLabel('bottom');
+
+
+  let container = document.getElementById('colorLegendContainer');
   const fullScreenRenderer2 = vtkFullScreenRenderWindow.newInstance({
     background,
     rootContainer: container,
     // containerStyle: { height: '100%', width: '50%', position: 'absolute', padding: '2em' },
-    containerStyle: { height: '18%', width: '2%', position: 'absolute', bottom: '10px', left: '10px'},
+    containerStyle: { height: '90%', width: '22%', position: 'absolute', bottom: '10px', left: '10px'},
   });
   renderer2 = fullScreenRenderer2.getRenderer();
   renderWindow2 = fullScreenRenderer2.getRenderWindow();
-  //renderWindow2.getInteractor().setDesiredUpdateRate(15);
-
-  container.appendChild(rootControllerContainer);
-  container.appendChild(addDataSetButton);
 
   if (userParams.fps) {
     if (Array.isArray(userParams.fps)) {
@@ -398,7 +414,6 @@ function createViewer2(container) {
 function createColorLegend(
   offsetX,
   offsetY,
-  preset,
   min = 0,
   max = 1
 ) {
@@ -444,9 +459,13 @@ function createColorLegend(
     },
   });
 
-  // const actorLegend = vtkActor.newInstance();
+  colorLegendMapper = vtkMapper.newInstance({ interpolateScalarsBeforeMapping: true,   
+    useLookupTableScalarRange: true,
+    lookupTableColorLegend,
+    scalarVisibility: true, });
 
-  colorLegendMapper = vtkMapper.newInstance({ interpolateScalarsBeforeMapping: true });
+  // colorLegendMapper = vtkMapper.newInstance({ interpolateScalarsBeforeMapping: true });
+
   let actorLegend = vtkFollower.newInstance();
   actorLegend.setCamera(renderer2.getActiveCamera());
   colorLegendMapper.setInputConnection(legendPolyData);
@@ -454,25 +473,11 @@ function createColorLegend(
   actorLegend.setMapper(colorLegendMapper);
   colorLegendMapper.setInputData(legendPolyData);
   actorLegend.getProperty().set({ edgeVisibility: true, edgeColor: [1, 1, 1] });
-
-  if (preset) {
-    const preset = vtkColorMaps.getPresetByName(presetSelector.value);
-    lookupTable.applyColorMap(preset);
-    colorLegendMapper.setLookupTable(lookupTable);
-    // lookupTable.setMappingRange(dataRange[0], dataRange[1]);
-    // lookupTable.updateRange();
-  }
+  colorLegendMapper.setLookupTable(lookupTable);  
 
   return actorLegend;
 }
 
-
-function updateColorLegend() {
-  const preset = vtkColorMaps.getPresetByName(presetSelector.value);
-  lookupTable.applyColorMap(preset);
-  colorLegendMapper.setLookupTable(lookupTable);
-  renderWindow2.render();
-}
 
 function setSelectors() {
   // Create UI
@@ -600,8 +605,6 @@ function setSelectors() {
   controlContainer.appendChild(highT);
   controlContainer.appendChild(submit);
   rootControllerContainer.appendChild(controlContainer);
-
-  const colorLegendContainer = document.createElement('div');
 }
 
 function isBrushed(brush_coords, cx, cy) {
@@ -752,8 +755,8 @@ function updateEnsemble(binRange, threshIdx=[]) {
   let pMin = resData['reservoir_data']['time_dataRanges']['PRESSURE']['min'];
 
   // set the ranges
-  var x = d3.scaleLinear().range([0, 800]);
-  var y = d3.scaleLinear().range([400, 0]);
+  var x = d3.scaleLinear().range([30, 750]);
+  var y = d3.scaleLinear().range([380, 0]);
   x.domain([0, pMax.length]); 
   y.domain(binRange); 
 
@@ -770,11 +773,13 @@ function updateEnsemble(binRange, threshIdx=[]) {
   // Add X axis
   plot.append("g")
     .attr('id', 'ensemble-xaxis')
-    .attr("transform", "translate(0,400)")
+    .attr("transform", "translate(0,380)")
     .call(d3.axisBottom(x));
+
   // Add Y axis
   plot.append("g")
     .attr('id', 'ensemble-yaxis')
+    .attr("transform", "translate(30,0)")
     .call(d3.axisLeft(y));
 }
 
@@ -805,14 +810,10 @@ function createPipeline(fileName, fileContents) {
   });
 
   const scalars = source.getPointData().getScalars();
-  const dataRange = [].concat(scalars ? scalars.getRange() : [0, 1]);
+  dataRange = [].concat(scalars ? scalars.getRange() : [0, 1]);
   let activeArray = vtkDataArray;
 
   actor.setScale(1,1,5);
-
-  // Create color legend
-  let preset = vtkColorMaps.getPresetByName(presetSelector.value);
-  const colorLegend = createColorLegend(0,0,preset);
 
   // --------------------------------------------------------------------
   // Color handling
@@ -823,10 +824,18 @@ function createPipeline(fileName, fileContents) {
     lookupTable.applyColorMap(preset);
     lookupTable.setMappingRange(dataRange[0], dataRange[1]);
     lookupTable.updateRange();
-    updateColorLegend();
+
+    lookupTableColorLegend.applyColorMap(preset);
+    lookupTableColorLegend.setMappingRange(dataRange[0], dataRange[1]);
+    lookupTableColorLegend.updateRange();
+    renderWindow2.render();
+    //renderWindow.render();
   }
   applyPreset();
   presetSelector.addEventListener('change', applyPreset);
+
+  // Create color legend
+  const colorLegend = createColorLegend(0,0);
 
   // --------------------------------------------------------------------
   // Representation handling
@@ -957,7 +966,7 @@ function createPipeline(fileName, fileContents) {
     }
 
     const [location, colorByArrayName] = event.target.value.split(':');
-    const interpolateScalarsBeforeMapping = location === 'PointData';
+    let interpolateScalarsBeforeMapping = location === 'PointData';
     let colorMode = ColorMode.DEFAULT;
     let scalarMode = ScalarMode.DEFAULT;
     const scalarVisibility = location.length > 0;
@@ -967,8 +976,9 @@ function createPipeline(fileName, fileContents) {
       );
       activeArray = newArray;
       const newDataRange = activeArray.getRange();
-      dataRange[0] = newDataRange[0];
-      dataRange[1] = newDataRange[1];
+      dataRange = newDataRange;
+      // dataRange[0] = newDataRange[0];
+      // dataRange[1] = newDataRange[1];
       colorMode = ColorMode.MAP_SCALARS;
       // scalarMode =
       //   location === 'PointData'
@@ -997,6 +1007,9 @@ function createPipeline(fileName, fileContents) {
     // We already have the thresholded indices!
     let colorProp = e.target.value.split(':')[1];
     let threshProp = document.getElementById('thresholdBySelector').options[thresholdBySelector.selectedIndex].text;
+    const preset = vtkColorMaps.getPresetByName(presetSelector.value);
+    lookupTable.applyColorMap(preset);
+    // lookupTableColorLegend.applyColorMap(preset);
 
     if (colorProp === '') {
 
@@ -1017,32 +1030,30 @@ function createPipeline(fileName, fileContents) {
         vtkDataArray.newInstance({name: colorProp, values: newColorData})
       )
 
-      let dMax = resData['reservoir_data']['unstructured']['dataRanges'][colorProp]['max']
-      let dMin = resData['reservoir_data']['unstructured']['dataRanges'][colorProp]['min']
-  
-      const preset = vtkColorMaps.getPresetByName(presetSelector.value);
-      lookupTable.applyColorMap(preset);
-      lookupTable.setMappingRange(dMin, dMax);
-      lookupTable.updateRange();
+      var dMax = resData['reservoir_data']['unstructured']['dataRanges'][colorProp]['max']
+      var dMin = resData['reservoir_data']['unstructured']['dataRanges'][colorProp]['min']
     }
 
     //Otherwise, get color data array for outer mesh
     else {
       let cell_data = source.getCellData();
-      if (Array.isArray(resData['reservoir_data']['structured'][colorProp.toLowerCase()])){ 
-        let colorData = cell_data.getArrayByName(colorProp);
+      var colorData = cell_data.getArrayByName(colorProp);
+      if (Array.isArray(resData['reservoir_data']['structured'][colorProp.toLowerCase()][0])){ 
+        // var colorData = cell_data.getArrayByName(colorProp);
+        colorData.setData(resData['reservoir_data']['structured'][colorProp.toLowerCase()][0]);
+      }
+      else {
         colorData.setData(resData['reservoir_data']['structured'][colorProp.toLowerCase()]);
       }
   
-      let dMax = resData['reservoir_data']['structured']['dataRanges'][colorProp]['max']
-      let dMin = resData['reservoir_data']['structured']['dataRanges'][colorProp]['min']
-  
-      const preset = vtkColorMaps.getPresetByName(presetSelector.value);
-      lookupTable.applyColorMap(preset);
-      lookupTable.setMappingRange(dMin, dMax);
-      lookupTable.updateRange();
+      var dMax = resData['reservoir_data']['structured']['dataRanges'][colorProp]['max']
+      var dMin = resData['reservoir_data']['structured']['dataRanges'][colorProp]['min']
     }
 
+    lookupTable.setMappingRange(dMin, dMax);
+    lookupTable.updateRange();
+    // lookupTableColorLegend.setMappingRange(dMin, dMax);
+    // lookupTableColorLegend.updateRange();
     updateColorBy(e);
 
   });
@@ -1081,6 +1092,9 @@ function createPipeline(fileName, fileContents) {
     renderWindow.render();
   });
 
+  lookupTableColorLegend.onModified(() => {
+    renderWindow2.render();
+  })
 
 
 //   // Cell Picker
@@ -1357,7 +1371,7 @@ function load(container, options) {
 
   if (options.files) {
     createViewer(container);
-    createViewer2(container);
+    createViewer2();
     let count = options.files.length;
     loadFile(options.files[0], count);
     loadUnstructured(options.files[1]);
@@ -1495,9 +1509,6 @@ function load(container, options) {
       })
     })
 
-
-
-
     // PRESSURE range plot
     var plot = pc.append('svg')      
       .style('width', '100%')
@@ -1507,10 +1518,26 @@ function load(container, options) {
       .attr('id', 'pressure-ensemble')
       .attr('transform', 'translate(60, 20)');
 
+    // xaxis label
+    plot.append("text")
+    .attr("y", 400)
+    .attr("x", 375)
+    .attr("dy", "1em")
+    .style("text-anchor", "middle")
+    .text("Time");  
+
+    // yaxis label
+    plot.append("text")
+    .attr("transform", "rotate(-90)")
+    .attr("y", -40)
+    .attr("x", -190)
+    .attr("dy", "1em")
+    .style("text-anchor", "middle")
+    .text("Pressure");   
 
     // set the ranges
-    var x = d3.scaleLinear().range([0, 800]);
-    var y = d3.scaleLinear().range([400, 0]);
+    var x = d3.scaleLinear().range([30, 750]);
+    var y = d3.scaleLinear().range([380, 0]);
     // Scale the range of the data
     x.domain([0, pMax.length]);
     y.domain([d3.min(pMin), d3.max(pMax)]);
@@ -1530,11 +1557,12 @@ function load(container, options) {
     // Add X axis
     plot.append("g")
       .attr('id', 'ensemble-xaxis')
-      .attr("transform", "translate(0,400)")
+      .attr("transform", "translate(0,380)")
       .call(d3.axisBottom(x));
     // Add Y axis
     plot.append("g")
       .attr('id', 'ensemble-yaxis')
+      .attr("transform", "translate(30,0)")
       .call(d3.axisLeft(y));
     plot.append("text")
     .attr("x", 100)
@@ -1589,7 +1617,7 @@ function load(container, options) {
       .attr("transform", "translate(" + x(0) + ", 0)");
 
     x = d3.scaleLinear().range([0, 50]);
-    y = d3.scaleLinear().range([400, 0]);
+    y = d3.scaleLinear().range([380, 0]);
     x.domain([0, countsMax]);
     y.domain([d3.min(bins), d3.max(bins)]);
 
@@ -1687,7 +1715,7 @@ function makeHistoNew(canvas, rData, xOffset, name) {
 function makeHisto(canvas, rData, xOffset, name) {  // TODO make histo object
 
   let x = d3.scaleLinear()
-  .domain([0, 1])
+  .domain([d3.min(rData), d3.max(rData)])
   .range([xOffset + 30, xOffset + 200 - 30])
   .clamp(false);
 
@@ -1716,7 +1744,8 @@ function makeHisto(canvas, rData, xOffset, name) {  // TODO make histo object
     xAxis = g =>
       g
         .attr("transform", `translate(0,${height - margin.bottom})`)
-        .call(d3.axisBottom(x).tickSizeOuter(0))
+        .call(d3.axisBottom(x).ticks(4))
+        //.tickSizeOuter(0))
         .call(g =>
           g
             .append("text")
