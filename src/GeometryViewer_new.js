@@ -386,6 +386,7 @@ function createViewer2() {
 
   function makeColorLegendLabel(ypos){
     ct.append('text').text('NA')
+    .attr('id', ypos + '-color-legend-label')
     .style('position', 'absolute')  
     .style('left', '55px')
     .style(ypos, '10px')
@@ -1081,6 +1082,10 @@ function createPipeline(fileName, fileContents) {
       var dMax = resData['reservoir_data']['structured']['dataRanges'][colorProp]['max']
       var dMin = resData['reservoir_data']['structured']['dataRanges'][colorProp]['min']
     }
+
+    // Set the color legend max/min labels
+    d3.select('#top-color-legend-label').text(dMax.toString());
+    d3.select('#bottom-color-legend-label').text(dMin.toString());
 
     lookupTable.setMappingRange(dMin, dMax);
     lookupTable.updateRange();
