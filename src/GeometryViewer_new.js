@@ -1514,8 +1514,14 @@ function load(container, options) {
     .style('height', '4%')
     .attr('id', 'ensemble-controls');
 
-    ensembleControls.append('text')
-      .text('Ensemble data: ');
+    let ed = ensembleControls.append('text')
+      .text('Ensemble data: ')
+      .attr('class', 'tooltip');
+
+    ed.append('span')
+    .text('Select data to view in plot below.  A vertical bar slides with time, and a rotated histogram shows ensemble data distribution. The blue ribbon represents '
+          + 'the max and min average reservoir value across time, or baseline behavior of the reservoir.')
+    .attr('class', 'tooltiptext');
 
     let ensembleOptions = ["PRESSURE", "SGAS"];
     let dropdown = ensembleControls.append('select');
