@@ -667,7 +667,7 @@ function highlightElements(event) {
       let d;
       for (let p in uData) {
           if (props.includes(p)) {
-            threshCanvas.select('#' + p).remove();
+            threshCanvas.select('#' + p.toUpperCase()).remove();
             if (Array.isArray(uData[p][0])) {  //time-series prop
               d = uData[p][time];
             }
@@ -678,7 +678,7 @@ function highlightElements(event) {
             for (let i of threshCirclesIdx) {
               if (d[i*6] != -1) histoData.push(d[i*6]);
             }
-            makeHisto(threshCanvas, histoData, 200 * offset, p);
+            makeHisto(threshCanvas, histoData, 220 * offset + 50, p.toUpperCase());
             offset += 1;
           }
       }
@@ -701,7 +701,7 @@ function highlightElements(event) {
         let d;
         for (let p in uData) {
             if (props.includes(p)) {
-              threshCanvas.select('#' + p).remove();
+              threshCanvas.select('#' + p.toUpperCase()).remove();
               if (Array.isArray(uData[p][0])) {  //time-series prop
                 d = uData[p][time];
               }
@@ -712,7 +712,7 @@ function highlightElements(event) {
               for (let i of threshDataIdx) {
                 if (d[i] != -1) histoData.push(d[i]);
               }
-              makeHisto(threshCanvas, histoData, 200 * offset, p);
+              makeHisto(threshCanvas, histoData, 220 * offset + 50, p.toUpperCase());
               offset += 1;
             }
         }
@@ -884,11 +884,11 @@ function createPipeline(fileName, fileContents) {
         if (Array.isArray(uData[p][0]) && !p.includes('var') && !p.includes('ml')) {
 
           // Remove histogram, then make a new one with updated data
-          let hist = document.getElementById(p);
+          let hist = document.getElementById(p.toUpperCase());
           hist.remove();
           let c = d3.select('#data-viewer');
           let d = uData[p][time]
-          makeHisto(c, d, 400 + 200 * offset, p);
+          makeHisto(c, d, 490 + 220 * offset, p.toUpperCase());
           offset += 1;
         }
       }
@@ -1425,20 +1425,28 @@ function load(container, options) {
   loadData().then(function(data1) {
     resData = data1;
     var pc = d3.select('body').append('g')
-    .style('width', '50%')
-    .style('height', '100%')
-    .style('float', 'right')
+      .style('width', '50%')
+      .style('height', '100%')
+      .style('float', 'right')
 
     var canvas = pc.append('svg')
     .attr('id', 'data-viewer')
     .style('width', '100%')
     .style('height', '23%')
-      .style('background-color', 'gray')
+    .style('background-color', 'gray');
 
-    makeHisto(canvas, data1['reservoir_data']['unstructured']['poro'], 0, 'poro');
-    makeHisto(canvas, data1['reservoir_data']['unstructured']['perm'], 200, 'perm');
-    makeHisto(canvas, data1['reservoir_data']['unstructured']['pressure'][0], 400, 'pressure');
-    makeHisto(canvas, data1['reservoir_data']['unstructured']['sgas'][0], 600, 'sgas');
+    canvas.append("text")
+    .attr("transform", "rotate(-90)")
+    .attr("y", 20)
+    .attr("x", -100)
+    .attr("dy", "1em")
+    .style("text-anchor", "middle")
+    .text("All Ensemble Data"); 
+    
+    makeHisto(canvas, data1['reservoir_data']['unstructured']['poro'], 50, 'PORO');
+    makeHisto(canvas, data1['reservoir_data']['unstructured']['perm'], 270, 'PERM');
+    makeHisto(canvas, data1['reservoir_data']['unstructured']['pressure'][0], 490, 'PRESSURE');
+    makeHisto(canvas, data1['reservoir_data']['unstructured']['sgas'][0], 710, 'SGAS');
 
     var threshCanvas = pc.append('svg')
     .attr('id', 'data-viewer-thresh')
@@ -1446,10 +1454,19 @@ function load(container, options) {
     .style('height', '23%')
     .style('background-color', 'gray');
 
-    makeHisto(threshCanvas, data1['reservoir_data']['unstructured']['poro'], 0, 'poro');
-    makeHisto(threshCanvas, data1['reservoir_data']['unstructured']['perm'], 200, 'perm');
-    makeHisto(threshCanvas, data1['reservoir_data']['unstructured']['pressure'][0], 400, 'pressure');
-    makeHisto(threshCanvas, data1['reservoir_data']['unstructured']['sgas'][0], 600, 'sgas');
+    // yaxis label
+    threshCanvas.append("text")
+    .attr("transform", "rotate(-90)")
+    .attr("y", 20)
+    .attr("x", -100)
+    .attr("dy", "1em")
+    .style("text-anchor", "middle")
+    .text("Threshold Ensemble Data"); 
+
+    makeHisto(threshCanvas, data1['reservoir_data']['unstructured']['poro'], 50, 'PORO');
+    makeHisto(threshCanvas, data1['reservoir_data']['unstructured']['perm'], 270, 'PERM');
+    makeHisto(threshCanvas, data1['reservoir_data']['unstructured']['pressure'][0], 490, 'PRESSURE');
+    makeHisto(threshCanvas, data1['reservoir_data']['unstructured']['sgas'][0], 710, 'SGAS');
   
 
 
@@ -1671,7 +1688,7 @@ function makeHistoNew(canvas, rData, xOffset, name) {
 
   let x = d3.scaleLinear()
   .domain([0, 1])
-  .range([xOffset + 30, xOffset + 200 - 30])
+  .range([xOffset + 30, xOffset + 220 - 30])
   .clamp(false);
 
   let colors = ["black"]
@@ -1744,7 +1761,7 @@ function makeHisto(canvas, rData, xOffset, name) {  // TODO make histo object
 
   let x = d3.scaleLinear()
   .domain([d3.min(rData), d3.max(rData)])
-  .range([xOffset + 30, xOffset + 200 - 30])
+  .range([xOffset + 20, xOffset + 220 - 20])
   .clamp(false);
 
   let colors = ["black"]
@@ -1798,7 +1815,7 @@ function makeHisto(canvas, rData, xOffset, name) {  // TODO make histo object
     .attr("fill",'#0073e6')
     // .attr("fill", (d => binColor(d.x0)))
     // .attr("x", d => x(d.x0) + 1)
-    .attr("x", (d,i) => xOffset + (i * 8 + 30))
+    .attr("x", (d,i) => xOffset + (i * 8 + 20))
     // .attr("width", d => Math.max(0, x(d.x1) - x(d.x0) - 1))
     .attr("width", 8)
     .attr("y", d => y(d.length))
