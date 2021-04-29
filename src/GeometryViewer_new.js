@@ -52,6 +52,8 @@ let renderer2;
 let renderWindow2;
 let presetSelector;
 
+let ensembleXaxis;
+
 let dataRange;
 
 let time;
@@ -116,6 +118,10 @@ class Violin {
     .attr("y1", 0)
     .attr("x2", 0)
     .attr("y2", 380)
+  }
+
+  xAxis() {
+    
   }
 
   // Draw all points representing violin points
@@ -773,11 +779,34 @@ function updateEnsemble(binRange, threshIdx=[]) {
   let plot = d3.select('#pressure-ensemble');
   d3.select('#ensemble-xaxis').remove();
   d3.select('#ensemble-yaxis').remove();
-  // Add X axis
-  plot.append("g")
+
+
+    d3.select('#time-label').remove();
+    d3.select('#overflow-rect').remove();
+    
+    // To hide overflow pts when plot is cropped
+    plot.append('rect')
+    .attr('id', 'overflow-rect')
+    .attr('x', 0)
+    .attr('y', 380)
+    .attr('width', 750)
+    .attr('height', 100)
+    .attr('fill', 'gray');
+
+    // Add X axis
+    plot.append("g")
     .attr('id', 'ensemble-xaxis')
     .attr("transform", "translate(0,380)")
     .call(d3.axisBottom(x));
+  
+    // xaxis label
+    plot.append("text")
+    .attr('id', 'time-label')
+    .attr("y", 400)
+    .attr("x", 375)
+    .attr("dy", "1em")
+    .style("text-anchor", "middle")
+    .text("Time"); 
 
   // Add Y axis
   plot.append("g")
@@ -1563,8 +1592,18 @@ function load(container, options) {
       .attr('id', 'pressure-ensemble')
       .attr('transform', 'translate(60, 20)');
 
+    // To hide overflow pts when plot is cropped
+    plot.append('rect')
+      .attr('id', 'overflow-rect')
+      .attr('x', 0)
+      .attr('y', 380)
+      .attr('width', 750)
+      .attr('height', 100)
+      .attr('fill', 'gray');
+
     // xaxis label
     plot.append("text")
+    .attr('id', 'time-label')
     .attr("y", 400)
     .attr("x", 375)
     .attr("dy", "1em")
@@ -1578,7 +1617,7 @@ function load(container, options) {
     .attr("x", -190)
     .attr("dy", "1em")
     .style("text-anchor", "middle")
-    .text("Pressure");   
+    .text("Pressure"); 
 
     // set the ranges
     var x = d3.scaleLinear().range([30, 750]);
@@ -1588,8 +1627,7 @@ function load(container, options) {
     y.domain([d3.min(pMin), d3.max(pMax)]);
 
     // Draw area chart for pMin and pMax
-    d3.select('#pressure-ensemble')
-      .append('g')
+    plot.append('g')
       .attr('id', 'ensemble-min-max');
     drawAreaChart(x, y);
 
