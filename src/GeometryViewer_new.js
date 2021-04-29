@@ -1190,7 +1190,7 @@ function createPipeline(fileName, fileContents) {
 
 // ----------------------------------------------------------------------------
 
-function createCylinder(height, radius, resolution, center) {
+function createCylinder(height, radius, resolution, center, type) {
   const cylinder = vtkCylinderSource.newInstance();
 
   const actor = vtkActor.newInstance();
@@ -1199,6 +1199,8 @@ function createCylinder(height, radius, resolution, center) {
   mapper.setInputConnection(cylinder.getOutputPort());
 
   actor.setScale(1, 1, 5);
+  if (type == 'INJ') actor.getProperty().setColor(0.0, 0.0, 0.5);
+  else actor.getProperty().setColor(0.0, 0.5, 0.0);
   renderer.addActor(actor);
 
   cylinder.set({height: height, radius: radius, resolution: resolution, center: center, direction: [0,0,1]});
@@ -1724,7 +1726,7 @@ function load(container, options) {
 
     let cyls = data1['reservoir_data']['well_cylinders'];
     for (let i = 0; i < cyls['centers'].length; i++) {
-      createCylinder(cyls['heights'][i], 10, 10, cyls['centers'][i]);
+      createCylinder(cyls['heights'][i], 10, 10, cyls['centers'][i], cyls['type'][i]);
     }
   });
 }
