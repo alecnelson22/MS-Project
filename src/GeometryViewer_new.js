@@ -1084,8 +1084,8 @@ function createPipeline(fileName, fileContents) {
     }
 
     // Set the color legend max/min labels
-    d3.select('#top-color-legend-label').text(dMax.toString());
-    d3.select('#bottom-color-legend-label').text(dMin.toString());
+    d3.select('#top-color-legend-label').text(dMax.toFixed(4).toString());
+    d3.select('#bottom-color-legend-label').text(dMin.toFixed(4).toString());
 
     lookupTable.setMappingRange(dMin, dMax);
     lookupTable.updateRange();
