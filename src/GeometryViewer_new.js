@@ -33,10 +33,13 @@ let mapper;
 let mapper_inside;
 let colorLegendMapper;
 
+let idxDropdown;
+
 let legendPolyData;
 
 let innerPolys;
 let threshDataIdx;
+let threshCirclesIdx;
 let circlesWereSelected = false;
 
 let files;
@@ -664,13 +667,11 @@ function highlightElements(event) {
     // circles are selected, threshold cells in render view
     if (d_brushed.length > 0) {
       circlesWereSelected = true;
-      let threshCirclesIdx = [];
+      threshCirclesIdx = [];
       for (let c of d_brushed) {
         threshCirclesIdx.push(...c.cells);
       }
       threshCirclesIdx = [...new Set(threshCirclesIdx)];  // remove duplicate elements
-
-
 
       let time = document.getElementById('timeSelector').value;
       let lowT = document.getElementById('lowT').value;
@@ -679,6 +680,9 @@ function highlightElements(event) {
 
       updateThreshHistos(threshCirclesIdx);
 
+      threshCirclesIdx.sort(function(a, b) {
+        return a - b;
+      });
     } 
     // nothing is selected, reset render view to 
     else {
@@ -689,6 +693,10 @@ function highlightElements(event) {
         loadTimeFile(time, lowT, highT);
 
         updateThreshHistos(threshDataIdx);
+
+        threshDataIdx.sort(function(a, b) {
+          return a - b;
+        });
 
         circlesWereSelected = false;
 
@@ -926,7 +934,11 @@ function createPipeline(fileName, fileContents) {
     //let binRange = updateViolin(threshIdx, violinCrop);
     let binRange = violin.update();
     updateEnsemble(binRange, violin.threshIdx);
-        
+
+    // Update thresh histos IF threshold is active
+    let threshProp = document.getElementById('thresholdBySelector').options[thresholdBySelector.selectedIndex].text;
+    if (threshProp != 'None') updateThreshHistos(threshDataIdx);
+
     renderWindow.render();
   }
 
@@ -1564,6 +1576,35 @@ function load(container, options) {
     .attr('id', 'auto-rescale-button')
     .attr('value', 'Disable auto-rescale');
 
+    let dib = ensembleControls.append('input')
+    .attr('type', 'button')
+    .attr('id', 'download-idxs-button')
+    .attr('value', 'Save thresh_idxs.txt')
+    .attr('title', 'Clicking this gathers indices for all cells currently shown in the render view with a threshold applied and saves them to a txt file.  If a brush selection is active, brushed cell indices are saved')
+    .attr('class', 'tooltip');
+
+    // dib.append('span')
+    // .text('Clicking this gathers indices for all cells currently shown in the render view with a threshold applied and saves them to a txt file.  If a brush selection is active, brushed cell indices are saved')
+    // .attr('class', 'tooltiptext');
+
+    const downloadToFile = (content, filename, contentType) => {
+      const a = document.createElement('a');
+      const file = new Blob([content], {type: contentType});
+      
+      a.href= URL.createObjectURL(file);
+      a.download = filename;
+      a.click();
+    
+      URL.revokeObjectURL(a.href);
+    };
+    document.querySelector('#download-idxs-button').addEventListener('click', () => {
+      let toSave;
+      if (circlesWereSelected) toSave = threshCirclesIdx;
+      else (toSave = threshDataIdx);
+      
+      downloadToFile(toSave, 'thresh_idx.txt', 'text/plain');
+    });
+
     document.getElementById('iqr-button-crop').addEventListener('click', function() {
       violin.crop = !violin.crop;
       d3.select('#iqr-button-crop').attr('value', function() {return violin.crop ? 'Uncrop plot' : 'Crop plot'});
@@ -1847,7 +1888,8 @@ function makeHisto(canvas, rData, xOffset, name) {  // TODO make histo object
     xAxis = g =>
       g
         .attr("transform", `translate(0,${height - margin.bottom})`)
-        .call(d3.axisBottom(x).ticks(4))
+        .call(d3.axisBottom(x)
+        .ticks(4))
         //.tickSizeOuter(0))
         .call(g =>
           g
