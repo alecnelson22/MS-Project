@@ -482,7 +482,7 @@ function createColorLegend(
 
   colorLegendMapper = vtkMapper.newInstance({ interpolateScalarsBeforeMapping: true,   
     useLookupTableScalarRange: true,
-    lookupTableColorLegend,
+    lookupTable,
     scalarVisibility: true, });
 
   // colorLegendMapper = vtkMapper.newInstance({ interpolateScalarsBeforeMapping: true });
@@ -1019,15 +1019,10 @@ function createPipeline(fileName, fileContents) {
     const scalarVisibility = location.length > 0;
     if (scalarVisibility) {
 
-      
-      var dMax = resData['reservoir_data']['unstructured']['dataRanges'][colorByArrayName]['max']
-      var dMin = resData['reservoir_data']['unstructured']['dataRanges'][colorByArrayName]['min']
+      var dMax = resData['reservoir_data']['unstructured']['dataRanges'][colorByArrayName]['max'];
+      var dMin = resData['reservoir_data']['unstructured']['dataRanges'][colorByArrayName]['min'];
+      legendPolyData.getPointData().getArrayByName('pointScalars').setData([dMin, dMin, dMax, dMax]);
 
-      // const newArray = currentSource[`get${location}`]().getArrayByName(
-      //   colorByArrayName
-      // );
-      // activeArray = newArray;
-      // const newDataRange = activeArray.getRange();
       dataRange = [dMin, dMax];
       colorMode = ColorMode.MAP_SCALARS;
       // scalarMode =
@@ -1048,6 +1043,7 @@ function createPipeline(fileName, fileContents) {
       scalarMode,
       scalarVisibility,
     });
+
     applyPreset();
   }
 
