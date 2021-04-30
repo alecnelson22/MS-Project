@@ -34,6 +34,8 @@ let mapper_inside;
 let colorLegendMapper;
 
 let idxDropdown;
+let showWells = true;
+let wells = [];
 
 let legendPolyData;
 
@@ -586,6 +588,32 @@ function setSelectors() {
     updateThreshHistos(threshDataIdx);
   })
 
+  let wellToggle = document.createElement('input');
+  wellToggle.setAttribute('id', 'well-button');
+  wellToggle.setAttribute('type', 'button');
+  wellToggle.setAttribute('value', 'Hide Wells');
+  wellToggle.setAttribute('title', 'Toggle well visibility.  Orange represents injectors, green represents producers.');
+  wellToggle.addEventListener('click', function() {
+    d3.select('#well-button').attr('value', function() {
+      let t;
+      if (showWells) {
+        t = 'Show wells';
+        for (let a of wells) {
+          a.setVisibility(false);
+        }
+      }
+      else {
+        t = 'Hide wells';
+        for (let a of wells) {
+          a.setVisibility(true);
+        }
+      }
+      showWells = !showWells;
+      renderWindow.render();
+      return t;
+    });
+  })
+
   // Append to container to continue to next flex box line
   function breakLine() {
     let breakLine = document.createElement('div');
@@ -630,6 +658,11 @@ function setSelectors() {
   controlContainer.appendChild(lowT);
   controlContainer.appendChild(highT);
   controlContainer.appendChild(submit);
+
+  controlContainer.appendChild(breakLine());
+
+  controlContainer.appendChild(wellToggle);
+
   rootControllerContainer.appendChild(controlContainer);
 }
 
@@ -1205,6 +1238,7 @@ function createCylinder(height, radius, resolution, center, type) {
   mapper.setInputConnection(cylinder.getOutputPort());
 
   actor.setScale(1, 1, 5);
+  wells.push(actor);
   if (type == 'INJ') actor.getProperty().setColor(1.0, 0.5, 0.0);
   else actor.getProperty().setColor(0.0, 0.25, 0.0);
   renderer.addActor(actor);
@@ -1564,28 +1598,27 @@ function load(container, options) {
     ensembleControls.append('input')
       .attr('type', 'button')
       .attr('id', 'iqr-button-crop')
-      .attr('value', 'Crop plot');
+      .attr('value', 'Crop plot')
+      .attr('title', 'Crop plot based on interquartile range method of determining outliers');
 
     ensembleControls.append('input')
     .attr('type', 'button')
     .attr('id', 'iqr-button-points')
-    .attr('value', 'Show points');
+    .attr('value', 'Show points')
+    .attr('title', 'Toggle data points for the rotated histogram below.  With these points visible, brushing is possible for further data subset selection')
 
     ensembleControls.append('input')
     .attr('type', 'button')
     .attr('id', 'auto-rescale-button')
-    .attr('value', 'Disable auto-rescale');
+    .attr('value', 'Disable auto-rescale')
+    .attr('title', 'Disabling will lock the plot to the current scale.  Enabling will cause plot to update at each time step to include all data members');
 
-    let dib = ensembleControls.append('input')
+    ensembleControls.append('input')
     .attr('type', 'button')
     .attr('id', 'download-idxs-button')
     .attr('value', 'Save thresh_idxs.txt')
     .attr('title', 'Clicking this gathers indices for all cells currently shown in the render view with a threshold applied and saves them to a txt file.  If a brush selection is active, brushed cell indices are saved')
     .attr('class', 'tooltip');
-
-    // dib.append('span')
-    // .text('Clicking this gathers indices for all cells currently shown in the render view with a threshold applied and saves them to a txt file.  If a brush selection is active, brushed cell indices are saved')
-    // .attr('class', 'tooltiptext');
 
     const downloadToFile = (content, filename, contentType) => {
       const a = document.createElement('a');
