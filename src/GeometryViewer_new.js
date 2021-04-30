@@ -51,6 +51,7 @@ let renderer;
 let renderer2;
 let renderWindow2;
 let presetSelector;
+let ensembleSelector;
 
 let ensembleXaxis;
 
@@ -164,7 +165,8 @@ class Violin {
     this.xScale = d3.scaleLinear().range([30, 750]);
     this.xScale.domain([0, 64]);
   
-    let data = resData['reservoir_data']['pressure_violin'][time];
+    var currProp = ensembleSelector.options[ensembleSelector.selectedIndex].text;
+    let data = resData['reservoir_data'][currProp.toLowerCase() + '_violin'][time];
     let newData = [];
     this.bins = Object.values(data);
 
@@ -179,9 +181,12 @@ class Violin {
           if (typeof bin === 'string') {
             let d = bin.split('*');
             let b = d[0];
-            let c = parseInt(d[1]);
+            if (b == 0){
+              b = 0;
+            }
+            let c = parseFloat(d[1]);
             if (!(b in that.binIdx)) {
-              newData.push({"bin": parseInt(b), "count": c, "cells": [iCell]})
+              newData.push({"bin": parseFloat(b), "count": c, "cells": [iCell]})
               that.binIdx[b] = cIdx;
               cIdx++; 
             }
@@ -194,7 +199,7 @@ class Violin {
           else {
             bin = bin.toString();
             if (!(bin in that.binIdx)) {
-              newData.push({"bin": parseInt(bin), "count": 1, "cells": [iCell]})
+              newData.push({"bin": parseFloat(bin), "count": 1, "cells": [iCell]})
               that.binIdx[bin] = cIdx;
               cIdx++; 
             }
@@ -236,7 +241,13 @@ class Violin {
     if (this.crop) {
       if (time != 0) {
         for (let i = 0; i < this.bins.length; i++) {
-          if (this.crop) allBins.push(...Array(counts[i]).fill(this.bins[i]));  
+          if (this.crop) {
+            let n = this.bins[i];
+            for (let j = 0; j < counts[i]; j++) {
+              allBins.push(n);
+            }
+          }
+          // allBins.push(...Array(counts[i]).fill(this.bins[i]));  
         }
       }
 
@@ -741,8 +752,10 @@ function onSubmit() {
 
 // Draws an area chart for pMax and pMin
 function drawAreaChart(xScale, yScale) {
-  let pMax = resData['reservoir_data']['time_dataRanges']['PRESSURE']['max'];
-  let pMin = resData['reservoir_data']['time_dataRanges']['PRESSURE']['min'];
+  var currProp = ensembleSelector.options[ensembleSelector.selectedIndex].text;
+
+  let pMax = resData['reservoir_data']['time_dataRanges'][currProp]['max'];
+  let pMin = resData['reservoir_data']['time_dataRanges'][currProp]['min'];
 
   // Add minmax area plot
   var area = d3.area()
@@ -761,8 +774,9 @@ function drawAreaChart(xScale, yScale) {
 
 
 function updateEnsemble(binRange, threshIdx=[]) {
-  let pMax = resData['reservoir_data']['time_dataRanges']['PRESSURE']['max'];
-  let pMin = resData['reservoir_data']['time_dataRanges']['PRESSURE']['min'];
+  var currProp = ensembleSelector.options[ensembleSelector.selectedIndex].text;
+  let pMax = resData['reservoir_data']['time_dataRanges'][currProp]['max'];
+  let pMin = resData['reservoir_data']['time_dataRanges'][currProp]['min'];
 
   // set the ranges
   var x = d3.scaleLinear().range([30, 750]);
@@ -782,32 +796,32 @@ function updateEnsemble(binRange, threshIdx=[]) {
   d3.select('#ensemble-yaxis').remove();
 
 
-    d3.select('#time-label').remove();
-    d3.select('#overflow-rect').remove();
-    
-    // To hide overflow pts when plot is cropped
-    plot.append('rect')
-    .attr('id', 'overflow-rect')
-    .attr('x', 0)
-    .attr('y', 380)
-    .attr('width', 750)
-    .attr('height', 100)
-    .attr('fill', 'gray');
-
-    // Add X axis
-    plot.append("g")
-    .attr('id', 'ensemble-xaxis')
-    .attr("transform", "translate(0,380)")
-    .call(d3.axisBottom(x));
+  d3.select('#time-label').remove();
+  d3.select('#overflow-rect').remove();
   
-    // xaxis label
-    plot.append("text")
-    .attr('id', 'time-label')
-    .attr("y", 400)
-    .attr("x", 375)
-    .attr("dy", "1em")
-    .style("text-anchor", "middle")
-    .text("Time"); 
+  // To hide overflow pts when plot is cropped
+  plot.append('rect')
+  .attr('id', 'overflow-rect')
+  .attr('x', 0)
+  .attr('y', 380)
+  .attr('width', 750)
+  .attr('height', 100)
+  .attr('fill', 'gray');
+
+  // Add X axis
+  plot.append("g")
+  .attr('id', 'ensemble-xaxis')
+  .attr("transform", "translate(0,380)")
+  .call(d3.axisBottom(x));
+
+  // xaxis label
+  plot.append("text")
+  .attr('id', 'time-label')
+  .attr("y", 400)
+  .attr("x", 375)
+  .attr("dy", "1em")
+  .style("text-anchor", "middle")
+  .text("Time"); 
 
   // Add Y axis
   plot.append("g")
@@ -844,7 +858,7 @@ function createPipeline(fileName, fileContents) {
 
   const scalars = source.getPointData().getScalars();
   dataRange = [].concat(scalars ? scalars.getRange() : [0, 1]);
-  let activeArray = vtkDataArray;
+  //let activeArray = vtkDataArray;
 
   actor.setScale(1,1,5);
 
@@ -1004,14 +1018,17 @@ function createPipeline(fileName, fileContents) {
     let scalarMode = ScalarMode.DEFAULT;
     const scalarVisibility = location.length > 0;
     if (scalarVisibility) {
-      const newArray = currentSource[`get${location}`]().getArrayByName(
-        colorByArrayName
-      );
-      activeArray = newArray;
-      const newDataRange = activeArray.getRange();
-      dataRange = newDataRange;
-      // dataRange[0] = newDataRange[0];
-      // dataRange[1] = newDataRange[1];
+
+      
+      var dMax = resData['reservoir_data']['unstructured']['dataRanges'][colorByArrayName]['max']
+      var dMin = resData['reservoir_data']['unstructured']['dataRanges'][colorByArrayName]['min']
+
+      // const newArray = currentSource[`get${location}`]().getArrayByName(
+      //   colorByArrayName
+      // );
+      // activeArray = newArray;
+      // const newDataRange = activeArray.getRange();
+      dataRange = [dMin, dMax];
       colorMode = ColorMode.MAP_SCALARS;
       // scalarMode =
       //   location === 'PointData'
@@ -1199,8 +1216,8 @@ function createCylinder(height, radius, resolution, center, type) {
   mapper.setInputConnection(cylinder.getOutputPort());
 
   actor.setScale(1, 1, 5);
-  if (type == 'INJ') actor.getProperty().setColor(0.0, 0.0, 0.5);
-  else actor.getProperty().setColor(0.0, 0.5, 0.0);
+  if (type == 'INJ') actor.getProperty().setColor(1.0, 0.5, 0.0);
+  else actor.getProperty().setColor(0.0, 0.25, 0.0);
   renderer.addActor(actor);
 
   cylinder.set({height: height, radius: radius, resolution: resolution, center: center, direction: [0,0,1]});
@@ -1503,13 +1520,6 @@ function load(container, options) {
     makeHisto(threshCanvas, data1['reservoir_data']['unstructured']['perm'], 270, 'PERM');
     makeHisto(threshCanvas, data1['reservoir_data']['unstructured']['pressure'][0], 490, 'PRESSURE');
     makeHisto(threshCanvas, data1['reservoir_data']['unstructured']['sgas'][0], 710, 'SGAS');
-  
-
-
-    let pMax = resData['reservoir_data']['time_dataRanges']['PRESSURE']['max'];
-    let pMin = resData['reservoir_data']['time_dataRanges']['PRESSURE']['min'];
-    let sMax = resData['reservoir_data']['time_dataRanges']['SGAS']['max'];
-    let sMin = resData['reservoir_data']['time_dataRanges']['SGAS']['min'];
 
     let ensembleControls = pc.append('div')
     .style('width', '100%')
@@ -1526,11 +1536,27 @@ function load(container, options) {
     .attr('class', 'tooltiptext');
 
     let ensembleOptions = ["PRESSURE", "SGAS"];
-    let dropdown = ensembleControls.append('select');
+    let dropdown = ensembleControls.append('select').attr('id', 'ensemble-dropdown');
     let options = dropdown.selectAll('option').data(ensembleOptions).enter().append('option');
     options.text(function(d) {
       return d;
     })
+
+    ensembleSelector = document.getElementById('ensemble-dropdown');
+    ensembleSelector.addEventListener('change', function(e) {
+      var currProp = ensembleSelector.options[ensembleSelector.selectedIndex].text;
+      d3.select('#ensemble-y-label').text(currProp);
+      let binRange = violin.update();
+      updateEnsemble(binRange, violin.threshIdx);
+    })
+    var currProp = ensembleSelector.options[ensembleSelector.selectedIndex].text;
+
+    let pMax = resData['reservoir_data']['time_dataRanges'][currProp]['max'];
+    let pMin = resData['reservoir_data']['time_dataRanges'][currProp]['min'];
+    // let pMax = resData['reservoir_data']['time_dataRanges']['PRESSURE']['max'];
+    // let pMin = resData['reservoir_data']['time_dataRanges']['PRESSURE']['min'];
+    // let sMax = resData['reservoir_data']['time_dataRanges']['SGAS']['max'];
+    // let sMin = resData['reservoir_data']['time_dataRanges']['SGAS']['min'];
 
     let iqr = ensembleControls.append('div')
       .text('IQR multiplier: ')
@@ -1625,12 +1651,13 @@ function load(container, options) {
 
     // yaxis label
     plot.append("text")
+    .attr('id', 'ensemble-y-label')
     .attr("transform", "rotate(-90)")
     .attr("y", -40)
     .attr("x", -190)
     .attr("dy", "1em")
     .style("text-anchor", "middle")
-    .text("Pressure"); 
+    .text(currProp); 
 
     // set the ranges
     var x = d3.scaleLinear().range([30, 750]);
@@ -1660,17 +1687,18 @@ function load(container, options) {
       .attr('id', 'ensemble-yaxis')
       .attr("transform", "translate(30,0)")
       .call(d3.axisLeft(y));
-    plot.append("text")
-    .attr("x", 100)
-    .attr("y", -5)
-    .attr("fill", "#000")
-    .attr("font-weight", "bold")
-    .attr("text-anchor", "middle")
-    .attr("font-size", "x-small")
-    .text("Average Ensemble Pressure");
+    // plot.append("text")
+    // .attr("x", 100)
+    // .attr("y", -5)
+    // .attr("fill", "#000")
+    // .attr("font-weight", "bold")
+    // .attr("text-anchor", "middle")
+    // .attr("font-size", "x-small")
+    // .text("Average Ensemble Pressure");
 
     // Make a violin plot of pressure data at a single time step
-    let data = resData['reservoir_data']['pressure_violin'][0];
+    let data = resData['reservoir_data'][currProp.toLowerCase() + '_violin'][0];
+    // let data = resData['reservoir_data']['pressure_violin'][0];
 
     let newData = [];
     let cells = Object.keys(data);
@@ -1681,10 +1709,10 @@ function load(container, options) {
         if (typeof bin === 'string') {
           let d = bin.split('*');
           if (d[0] in newData) {
-            newData[d[0]] += parseInt(d[1])
+            newData[d[0]] += parseFloat(d[1])
           }
           else {
-            newData[d[0]] = parseInt(d[1])
+            newData[d[0]] = parseFloat(d[1])
           }
         }
         else {
@@ -1717,6 +1745,8 @@ function load(container, options) {
     x.domain([0, countsMax]);
     y.domain([d3.min(bins), d3.max(bins)]);
 
+    
+
     // Create violin object
     violin = new Violin(newData, vSvg, false, x, y);
 
@@ -1726,7 +1756,7 @@ function load(container, options) {
 
     let cyls = data1['reservoir_data']['well_cylinders'];
     for (let i = 0; i < cyls['centers'].length; i++) {
-      createCylinder(cyls['heights'][i], 10, 10, cyls['centers'][i], cyls['type'][i]);
+      createCylinder(cyls['heights'][i], 8, 8, cyls['centers'][i], cyls['type'][i]);
     }
   });
 }
