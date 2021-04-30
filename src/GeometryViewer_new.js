@@ -579,6 +579,8 @@ function setSelectors() {
     let binRange = violin.update();
     //let binRange = updateViolin(threshIdx, violinCrop);
     updateEnsemble(binRange, violin.threshIdx);
+
+    updateThreshHistos(threshDataIdx);
   })
 
   // Append to container to continue to next flex box line
@@ -675,32 +677,7 @@ function highlightElements(event) {
       let highT = document.getElementById('highT').value;
       loadTimeFile(time, lowT, highT, threshCirclesIdx);
 
-
-
-      let props = ['poro', 'perm', 'pressure', 'sgas'];  // todo hardcoded
-      let threshCanvas = d3.select('#data-viewer-thresh');
-      // Update histograms of threshed cells
-      let uData = resData['reservoir_data']['unstructured'];
-      let offset = 0;
-      let d;
-      for (let p in uData) {
-          if (props.includes(p)) {
-            threshCanvas.select('#' + p.toUpperCase()).remove();
-            if (Array.isArray(uData[p][0])) {  //time-series prop
-              d = uData[p][time];
-            }
-            else {  //static prop
-              d = uData[p];
-            }
-            let histoData = [];
-            for (let i of threshCirclesIdx) {
-              if (d[i*6] != -1) histoData.push(d[i*6]);
-            }
-            makeHisto(threshCanvas, histoData, 220 * offset + 50, p.toUpperCase());
-            offset += 1;
-          }
-      }
-
+      updateThreshHistos(threshCirclesIdx);
 
     } 
     // nothing is selected, reset render view to 
@@ -711,29 +688,7 @@ function highlightElements(event) {
         let highT = document.getElementById('highT').value;
         loadTimeFile(time, lowT, highT);
 
-        let props = ['poro', 'perm', 'pressure', 'sgas'];  // todo hardcoded
-        let threshCanvas = d3.select('#data-viewer-thresh');
-        // Update histograms of threshed cells
-        let uData = resData['reservoir_data']['unstructured'];
-        let offset = 0;
-        let d;
-        for (let p in uData) {
-            if (props.includes(p)) {
-              threshCanvas.select('#' + p.toUpperCase()).remove();
-              if (Array.isArray(uData[p][0])) {  //time-series prop
-                d = uData[p][time];
-              }
-              else {  //static prop
-                d = uData[p];
-              }
-              let histoData = [];
-              for (let i of threshDataIdx) {
-                if (d[i] != -1) histoData.push(d[i]);
-              }
-              makeHisto(threshCanvas, histoData, 220 * offset + 50, p.toUpperCase());
-              offset += 1;
-            }
-        }
+        updateThreshHistos(threshDataIdx);
 
         circlesWereSelected = false;
 
@@ -748,6 +703,32 @@ function onSubmit() {
   let lowT = document.getElementById('lowT').value;
   let highT = document.getElementById('highT').value;
   violin.threshIdx = loadTimeFile(time, lowT, highT);
+}
+
+function updateThreshHistos(currIdx) {
+  let props = ['poro', 'perm', 'pressure', 'sgas'];  // todo hardcoded
+  let threshCanvas = d3.select('#data-viewer-thresh');
+  // Update histograms of threshed cells
+  let uData = resData['reservoir_data']['unstructured'];
+  let offset = 0;
+  let d;
+  for (let p in uData) {
+      if (props.includes(p)) {
+        threshCanvas.select('#' + p.toUpperCase()).remove();
+        if (Array.isArray(uData[p][0])) {  //time-series prop
+          d = uData[p][time];
+        }
+        else {  //static prop
+          d = uData[p];
+        }
+        let histoData = [];
+        for (let i of currIdx) {
+          if (d[i] != -1) histoData.push(d[i]);
+        }
+        makeHisto(threshCanvas, histoData, 220 * offset + 50, p.toUpperCase());
+        offset += 1;
+      }
+  }
 }
 
 // Draws an area chart for pMax and pMin
@@ -1890,6 +1871,7 @@ function makeHisto(canvas, rData, xOffset, name) {  // TODO make histo object
     .data(buckets)
     .join("rect")
     .attr("fill",'#0073e6')
+    .attr('stroke', 'gray')
     // .attr("fill", (d => binColor(d.x0)))
     // .attr("x", d => x(d.x0) + 1)
     .attr("x", (d,i) => xOffset + (i * 8 + 20))
